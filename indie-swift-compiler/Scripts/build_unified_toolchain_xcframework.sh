@@ -47,6 +47,29 @@ require_tool python3
 require_tool libtool
 require_tool nm
 
+# Apple ld does not understand GNU-style --gc-sections. Some CI environments
+# inject it through LDFLAGS/CMAKE_*_LINKER_FLAGS, so strip it and switch to the
+# Darwin equivalent when configuring iOS builds.
+append_apple_linker_cmake_flags() {
+  local -n _out_ref=$1
+  local combined_flags="${LDFLAGS:-} ${CMAKE_EXE_LINKER_FLAGS:-} ${CMAKE_SHARED_LINKER_FLAGS:-} ${CMAKE_MODULE_LINKER_FLAGS:-}"
+
+  combined_flags=" ${combined_flags} "
+  combined_flags="${combined_flags// --gc-sections / }"
+  combined_flags="${combined_flags// -Wl,--gc-sections / }"
+
+  combined_flags="$(printf '%s' "$combined_flags" | xargs 2>/dev/null || true)"
+  if [[ " $combined_flags " != *" -Wl,-dead_strip "* ]]; then
+    combined_flags="${combined_flags:+$combined_flags }-Wl,-dead_strip"
+  fi
+
+  _out_ref+=(
+    "-DCMAKE_EXE_LINKER_FLAGS=${combined_flags}"
+    "-DCMAKE_SHARED_LINKER_FLAGS=${combined_flags}"
+    "-DCMAKE_MODULE_LINKER_FLAGS=${combined_flags}"
+  )
+}
+
 build_llvm_clang_libraries() {
   local build_dir="$1"
   local target_list
@@ -170,6 +193,8 @@ if [[ "$IOS_DEVICE_ONLY" != "1" ]]; then
 fi
 
 echo "[1/4] Build LLVM/Clang for iOS arm64"
+declare -a llvm_ios_cmake_args=()
+append_apple_linker_cmake_flags llvm_ios_cmake_args
 cmake -S "$LLVM_SRC_DIR/llvm" -B "$LLVM_IOS_BUILD" -G Ninja \
   -DLLVM_ENABLE_PROJECTS="clang" \
   -DCMAKE_SYSTEM_NAME=iOS \
@@ -202,12 +227,15 @@ cmake -S "$LLVM_SRC_DIR/llvm" -B "$LLVM_IOS_BUILD" -G Ninja \
   -DLLVM_ENABLE_RTTI=ON \
   -DLLVM_ENABLE_LIBXML2=OFF \
   -DLLVM_INCLUDE_TESTS=OFF \
-  -DLLVM_INCLUDE_BENCHMARKS=OFF
+  -DLLVM_INCLUDE_BENCHMARKS=OFF \
+  "${llvm_ios_cmake_args[@]}"
 build_llvm_clang_libraries "$LLVM_IOS_BUILD"
 cmake --install "$LLVM_IOS_BUILD"
 
 if [[ "$IOS_DEVICE_ONLY" != "1" ]]; then
   echo "[1/4] Build LLVM/Clang for iOS Simulator arm64"
+  declare -a llvm_sim_cmake_args=()
+  append_apple_linker_cmake_flags llvm_sim_cmake_args
   cmake -S "$LLVM_SRC_DIR/llvm" -B "$LLVM_SIM_BUILD" -G Ninja \
     -DLLVM_ENABLE_PROJECTS="clang" \
     -DCMAKE_SYSTEM_NAME=iOS \
@@ -240,7 +268,8 @@ if [[ "$IOS_DEVICE_ONLY" != "1" ]]; then
     -DLLVM_ENABLE_RTTI=ON \
     -DLLVM_ENABLE_LIBXML2=OFF \
     -DLLVM_INCLUDE_TESTS=OFF \
-    -DLLVM_INCLUDE_BENCHMARKS=OFF
+    -DLLVM_INCLUDE_BENCHMARKS=OFF \
+    "${llvm_sim_cmake_args[@]}"
   build_llvm_clang_libraries "$LLVM_SIM_BUILD"
   cmake --install "$LLVM_SIM_BUILD"
 fi
