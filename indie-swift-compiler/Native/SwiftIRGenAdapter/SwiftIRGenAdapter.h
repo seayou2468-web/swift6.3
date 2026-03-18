@@ -18,8 +18,43 @@ typedef int (*swift_irgen_adapter_compile_fn)(
     const char *target_triple,
     const char *sdk_path);
 
+/// Swift ソースから raw SIL を生成する関数シグネチャ。
+typedef int (*swift_irgen_adapter_emit_sil_fn)(
+    const char *swift_source,
+    const char *module_name,
+    const char *out_sil_path,
+    const char *target_triple,
+    const char *sdk_path);
+
+/// SIL から LLVM IR を生成する関数シグネチャ。
+typedef int (*swift_irgen_adapter_emit_ir_from_sil_fn)(
+    const char *input_sil_path,
+    const char *module_name,
+    const char *out_ll_path,
+    const char *target_triple,
+    const char *sdk_path);
+
 /// 埋め込みfrontendの関数ポインタを設定する（0:成功）。
 int swift_irgen_adapter_set_compile_callback(swift_irgen_adapter_compile_fn callback);
+
+/// 埋め込みfrontendの SIL 生成関数を設定する（0:成功）。
+int swift_irgen_adapter_set_emit_sil_callback(swift_irgen_adapter_emit_sil_fn callback);
+
+/// 埋め込み IRGen の SIL->IR 変換関数を設定する（0:成功）。
+int swift_irgen_adapter_set_emit_ir_from_sil_callback(
+    swift_irgen_adapter_emit_ir_from_sil_fn callback);
+
+/// Swift ソースから raw SIL(.sil) を出力する。
+int swift_irgen_adapter_emit_sil(
+    const char *swift_source,
+    const char *module_name,
+    const char *out_sil_path);
+
+/// SIL(.sil) から LLVM IR(.ll) を出力する。
+int swift_irgen_adapter_emit_ir_from_sil(
+    const char *input_sil_path,
+    const char *module_name,
+    const char *out_ll_path);
 
 /// SwiftソースからLLVM IR(.ll)を出力する。
 /// SDK は優先順で HOME/Documents/sdk -> SWIFT_SDK_PATH。

@@ -9,7 +9,7 @@ SWIFT_REPO="$WORKSPACE_DIR/swift"
 LLVM_REPO="$WORKSPACE_DIR/llvm-project"
 BUNDLE_DIR="$ROOT_DIR/Generated/SwiftSILExtract"
 BUILD_DIR="$ROOT_DIR/.build/sil-optimizer-extract"
-OUT_LIB="$BUILD_DIR/libSwiftSILOptimizerExtract.a"
+OUT_LIB="$BUILD_DIR/libSwiftSILOptimizer.a"
 
 if [[ ! -d "$SWIFT_REPO" || ! -d "$LLVM_REPO" ]]; then
   echo "toolchain workspace が不足しています。先に実行:"
@@ -38,11 +38,13 @@ if(NOT SIL_SOURCES)
   message(FATAL_ERROR "SIL bundle source が見つかりません: $BUNDLE_DIR/lib")
 endif()
 
-add_library(SwiftSILOptimizerExtract STATIC
+add_library(SwiftSILOptimizer STATIC
+  $ROOT_DIR/Native/SwiftSILOptimizerAdapter/SwiftSILOptimizerAdapter.cpp
   \${SIL_SOURCES}
 )
 
-target_include_directories(SwiftSILOptimizerExtract PRIVATE
+target_include_directories(SwiftSILOptimizer PRIVATE
+  $ROOT_DIR/Native/SwiftSILOptimizerAdapter
   $BUNDLE_DIR/include
   $SWIFT_REPO/include
   $SWIFT_REPO/lib/SIL
@@ -51,11 +53,12 @@ target_include_directories(SwiftSILOptimizerExtract PRIVATE
   $LLVM_REPO/clang/include
 )
 
-target_compile_features(SwiftSILOptimizerExtract PRIVATE cxx_std_17)
+target_compile_features(SwiftSILOptimizer PRIVATE cxx_std_17)
+set_target_properties(SwiftSILOptimizer PROPERTIES OUTPUT_NAME SwiftSILOptimizer)
 CMAKE
 
 cmake -S "$BUILD_DIR" -B "$BUILD_DIR" -G Ninja
 cmake --build "$BUILD_DIR"
 
-cp "$BUILD_DIR/libSwiftSILOptimizerExtract.a" "$OUT_LIB"
+cp "$BUILD_DIR/libSwiftSILOptimizer.a" "$OUT_LIB"
 echo "生成完了: $OUT_LIB"

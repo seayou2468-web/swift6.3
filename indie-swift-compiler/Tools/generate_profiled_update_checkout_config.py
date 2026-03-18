@@ -36,6 +36,8 @@ def main() -> None:
     out = {
         "ssh-clone-pattern": source.get("ssh-clone-pattern", "git@github.com:%s.git"),
         "https-clone-pattern": source.get("https-clone-pattern", "https://github.com/%s.git"),
+        "clone-depth": 1,
+        "fetch-depth": 1,
         "repos": {name: repos[name] for name in enabled},
         "default-branch-scheme": args.scheme,
         "branch-schemes": {

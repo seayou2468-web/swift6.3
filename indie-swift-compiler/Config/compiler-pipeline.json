@@ -1,0 +1,84 @@
+{
+  "name": "indie-swift-compiler-default-pipeline",
+  "goal": "Swift source を最小依存で frontend/SILOptimizer/IRGen に流す",
+  "stageOrder": [
+    "swift",
+    "swift-frontend",
+    "sil-optimizer-mandatory",
+    "sil-optimizer-performance",
+    "irgen"
+  ],
+  "stages": {
+    "swift": {
+      "kind": "source",
+      "entrypoints": [
+        "MiniCompiler.compileSource",
+        "MiniSwiftCompilerBridge.compileToIR"
+      ],
+      "dependsOn": []
+    },
+    "swift-frontend": {
+      "kind": "frontend",
+      "entrypoints": [
+        "swift_irgen_adapter_emit_sil",
+        "swift_frontend_embedded_emit_sil"
+      ],
+      "dependsOn": [
+        "swift"
+      ]
+    },
+    "sil-optimizer-mandatory": {
+      "kind": "middle-end-mandatory",
+      "entrypoints": [
+        "swift_sil_optimizer_adapter_run_mandatory",
+        "swift_sil_optimizer_embedded_run_mandatory"
+      ],
+      "dependsOn": [
+        "swift-frontend"
+      ]
+    },
+    "sil-optimizer-performance": {
+      "kind": "middle-end-performance",
+      "entrypoints": [
+        "swift_sil_optimizer_adapter_run_performance",
+        "swift_sil_optimizer_embedded_run_performance"
+      ],
+      "dependsOn": [
+        "sil-optimizer-mandatory"
+      ]
+    },
+    "irgen": {
+      "kind": "backend",
+      "entrypoints": [
+        "swift_irgen_adapter_emit_ir_from_sil",
+        "swift_irgen_embedded_emit_ir_from_sil"
+      ],
+      "dependsOn": [
+        "sil-optimizer-performance"
+      ]
+    }
+  },
+  "embeddedArtifacts": {
+    "frontendAdapter": "libSwiftFrontend.a",
+    "silOptimizerAdapter": "libSwiftSILOptimizer.a",
+    "irgenHeaders": "Native/SwiftIRGenAdapter",
+    "silOptimizerHeaders": "Native/SwiftSILOptimizerAdapter"
+  },
+  "dependencyProfile": {
+    "keepMinimal": [
+      "swift",
+      "llvm-project",
+      "cmark",
+      "swift-syntax",
+      "swift-llvm-bindings"
+    ],
+    "avoid": [
+      "swift-driver",
+      "swift-package-manager",
+      "sourcekit-lsp",
+      "swift-docc",
+      "swift-format",
+      "swift-stress-tester"
+    ]
+  }
+}

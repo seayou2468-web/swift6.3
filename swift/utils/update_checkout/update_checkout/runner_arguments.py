@@ -19,6 +19,7 @@ class UpdateArguments(RunnerArguments):
     scheme_map: Any
     tag: Optional[str]
     timestamp: Any
+    depth: int
     reset_to_remote: bool
     clean: bool
     stash: bool

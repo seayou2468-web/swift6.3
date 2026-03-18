@@ -1,0 +1,69 @@
+{
+  "source_set": "swift-sil-optimizer-core",
+  "files": [
+    "include/swift/SIL/SILModule.h",
+    "include/swift/SIL/SILFunction.h",
+    "include/swift/SILOptimizer/PassManager/PassManager.h",
+    "include/swift/AST/SILOptimizerRequests.h",
+    "include/swift/AST/SILOptimizerTypeIDZone.def",
+    "lib/SILOptimizer/SILOptimizer.cpp",
+    "lib/SIL/IR/SILModule.cpp",
+    "lib/SIL/IR/SILFunction.cpp",
+    "lib/SIL/Verifier/SILVerifier.cpp",
+    "lib/SILOptimizer/PassManager/SILOptimizerRequests.cpp",
+    "lib/SILOptimizer/PassManager/PassManager.cpp",
+    "lib/SILOptimizer/PassManager/Passes.cpp",
+    "lib/SILOptimizer/Transforms/PerformanceInliner.cpp"
+  ],
+  "includes_by_file": {
+    "include/swift/SIL/SILModule.h": [],
+    "include/swift/SIL/SILFunction.h": [],
+    "include/swift/SILOptimizer/PassManager/PassManager.h": [],
+    "include/swift/AST/SILOptimizerRequests.h": [
+      "swift/AST/ASTTypeIDs.h",
+      "swift/AST/EvaluatorDependencies.h",
+      "swift/AST/SILGenRequests.h",
+      "swift/AST/SILOptimizerTypeIDZone.def",
+      "swift/AST/SimpleRequest.h",
+      "swift/Basic/DefineTypeIDZone.h"
+    ],
+    "include/swift/AST/SILOptimizerTypeIDZone.def": [],
+    "lib/SILOptimizer/SILOptimizer.cpp": [],
+    "lib/SIL/IR/SILModule.cpp": [],
+    "lib/SIL/IR/SILFunction.cpp": [],
+    "lib/SIL/Verifier/SILVerifier.cpp": [],
+    "lib/SILOptimizer/PassManager/SILOptimizerRequests.cpp": [
+      "llvm/ADT/Hashing.h",
+      "swift/AST/Evaluator.h",
+      "swift/AST/SILOptimizerRequests.h",
+      "swift/AST/SILOptimizerTypeIDZone.def",
+      "swift/Basic/ImplementTypeIDZone.h",
+      "swift/SILOptimizer/PassManager/PassPipeline.h",
+      "swift/Subsystems.h"
+    ],
+    "lib/SILOptimizer/PassManager/PassManager.cpp": [],
+    "lib/SILOptimizer/PassManager/Passes.cpp": [],
+    "lib/SILOptimizer/Transforms/PerformanceInliner.cpp": []
+  },
+  "summary": {
+    "total_includes": 12,
+    "swift_include_count": 11,
+    "llvm_clang_include_count": 1,
+    "swift_includes": [
+      "swift/AST/ASTTypeIDs.h",
+      "swift/AST/Evaluator.h",
+      "swift/AST/EvaluatorDependencies.h",
+      "swift/AST/SILGenRequests.h",
+      "swift/AST/SILOptimizerRequests.h",
+      "swift/AST/SILOptimizerTypeIDZone.def",
+      "swift/AST/SimpleRequest.h",
+      "swift/Basic/DefineTypeIDZone.h",
+      "swift/Basic/ImplementTypeIDZone.h",
+      "swift/SILOptimizer/PassManager/PassPipeline.h",
+      "swift/Subsystems.h"
+    ],
+    "llvm_clang_includes": [
+      "llvm/ADT/Hashing.h"
+    ]
+  }
+}

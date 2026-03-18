@@ -9,11 +9,27 @@ def run(cmd: list[str], cwd: Path | None = None) -> None:
     subprocess.run(cmd, cwd=str(cwd) if cwd else None, check=True)
 
 
-def ensure_repo(root: Path, name: str, remote: str, ref: str) -> None:
+def is_commit_ref(ref: str) -> bool:
+    return len(ref) in {40, 64} and all(ch in "0123456789abcdef" for ch in ref.lower())
+
+
+def ensure_repo(root: Path, name: str, remote: str, ref: str, depth: int) -> None:
     path = root / name
+    clone_cmd = ["git", "clone"]
+    if depth > 0:
+        clone_cmd += ["--depth", str(depth), "--single-branch"]
+    clone_cmd += ["--branch", ref, remote, str(path)]
+
     if not path.exists():
-        run(["git", "clone", remote, str(path)])
-    run(["git", "fetch", "--all", "--tags"], cwd=path)
+        run(clone_cmd)
+
+    fetch_cmd = ["git", "fetch", "origin"]
+    if depth > 0:
+        fetch_cmd += ["--depth", str(depth)]
+    fetch_cmd += ["--tags"]
+    if not is_commit_ref(ref):
+        fetch_cmd.append(ref)
+    run(fetch_cmd, cwd=path)
     run(["git", "checkout", ref], cwd=path)
 
 
@@ -29,6 +45,7 @@ def main() -> None:
     scheme = config.get("branch-schemes", {}).get(args.scheme, {})
     refs = scheme.get("repos", {})
     clone_pattern = config.get("https-clone-pattern", "https://github.com/%s.git")
+    depth = int(config.get("clone-depth", config.get("fetch-depth", 1)))
 
     workspace = Path(args.workspace)
     workspace.mkdir(parents=True, exist_ok=True)
@@ -42,8 +59,8 @@ def main() -> None:
 
         remote_url = clone_pattern % remote_id
         ref = refs[name]
-        print(f"sync {name}: {ref}")
-        ensure_repo(workspace, name, remote_url, ref)
+        print(f"sync {name}: {ref} (depth={depth})")
+        ensure_repo(workspace, name, remote_url, ref, depth)
 
     print(f"同期完了: {workspace}")
 

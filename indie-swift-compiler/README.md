@@ -32,6 +32,7 @@ indie-swift-compiler/
     prepare_sil_source_bundle.sh
     analyze_irgen_dependencies.sh
     analyze_sil_dependencies.sh
+    verify_swift_siloptimizer_to_irgen_pipeline.sh
     build_extracted_irgen_lib.sh
     build_extracted_sil_optimizer_lib.sh
     bootstrap_minimal_toolchain_repos.sh
@@ -57,6 +58,9 @@ indie-swift-compiler/
     SwiftIRGenAdapter/
       SwiftIRGenAdapter.h
       SwiftIRGenAdapter.cpp
+    SwiftSILOptimizerAdapter/
+      SwiftSILOptimizerAdapter.h
+      SwiftSILOptimizerAdapter.cpp
   Vendor/
     SwiftFrontendExtract/      # 参照用コピー（ビルド不使用）
   Examples/
@@ -65,12 +69,19 @@ indie-swift-compiler/
 
 ## 4. できること（現状）
 
-- `MiniCompiler` は `swift-frontend` adapter 経路のみを利用し、SwiftソースからLLVM IR文字列を生成。
+- `swift-frontend` の責務は Swift ソースから raw SIL を生成するところまでに限定。
+- `MiniCompiler` は `swift-frontend -> sil-optimizer-mandatory -> sil-optimizer-performance -> irgen` の段階実行を優先し、
+  stage API が未提供な場合のみ従来の単段 adapter にフォールバックして LLVM IR文字列を生成。
 - Swift側の実行は `swift_irgen_adapter_compile` シンボル経由（CLIフォールバックなし）。
 - `SwiftIRGenAdapter` は `swift_frontend_embedded_compile` 実体（または callback）を呼び出してIR生成。
+- `SwiftSILOptimizerAdapter` を追加し、抽出済み `SILOptimizer` を独自コンパイラへ埋め込むための
+  middle-end 接続点を用意。
 - `SWIFT_TARGET_TRIPLE` / `SWIFT_SDK_PATH` / `Documents/sdk` の順でターゲット/SDK設定を適用。
 - `build_swift_frontend_xcframework.sh` / `build_unified_toolchain_xcframework.sh` は
   実体ライブラリ同梱（`SWIFT_FRONTEND_EMBEDDED_LIB_IOS` / `SWIFT_FRONTEND_EMBEDDED_LIB_SIM`）を必須化。
+- `Config/compiler-pipeline.json` により、独自コンパイラの大まかな構成を
+  `swift -> swift-frontend -> sil-optimizer-mandatory -> sil-optimizer-performance -> irgen`
+  として固定化。
 
 ## 5. クイックスタート
 
@@ -139,9 +150,19 @@ SIL middle層（SIL/Optimizer）の依存分析を行う場合:
 
 - `swift_irgen_adapter_set_frontend_path(const char*)`（互換用・常にエラー返却）
 - `swift_irgen_adapter_set_compile_callback(swift_irgen_adapter_compile_fn)`
+- `swift_irgen_adapter_set_emit_sil_callback(swift_irgen_adapter_emit_sil_fn)`
+- `swift_irgen_adapter_set_emit_ir_from_sil_callback(swift_irgen_adapter_emit_ir_from_sil_fn)`
 - `swift_irgen_adapter_compile(const char*, const char*, const char*)`
+- `swift_sil_optimizer_adapter_set_mandatory_callback(swift_sil_optimizer_adapter_mandatory_fn)`
+- `swift_sil_optimizer_adapter_set_performance_callback(swift_sil_optimizer_adapter_performance_fn)`
+- `swift_sil_optimizer_adapter_run_mandatory(const char*, const char*, const char*)`
+- `swift_sil_optimizer_adapter_run_performance(const char*, const char*, const char*)`
+- `swift_sil_optimizer_adapter_optimize(const char*, const char*, const char*)`
 
 `libSwiftFrontend.a` は、adapter本体 + `swift_frontend_embedded_compile` 実装ライブラリを同梱した
+静的ライブラリとして生成します。
+
+`libSwiftSILOptimizer.a` は、SIL抽出ソース + `SwiftSILOptimizerAdapter` をまとめた
 静的ライブラリとして生成します。
 
 ## 6.1 最小依存だけ取得する（update-checkout最小JSON）
@@ -155,6 +176,7 @@ SIL middle層（SIL/Optimizer）の依存分析を行う場合:
 1. `compatibility-profile.json` の `enable` を使って必要最小限リポジトリのみ抽出
 2. `Config/minimal-update-checkout-config.json` を生成
 3. `sync_toolchain_repos.py` で最小セットだけ clone/update
+4. clone/fetch は `clone-depth=1` / `fetch-depth=1` により `update-checkout --depth=1` 相当で shallow に同期
 
 既定の抽出対象:
 
@@ -170,6 +192,18 @@ SIL middle層（SIL/Optimizer）の依存分析を行う場合:
 - Macro system
 - Indexing / IDE support
 - Driver（`swiftc` 相当）
+
+## 6.2 コンパイラ構成の確認
+
+```bash
+python3 ./Scripts/verify_compiler_architecture.py
+```
+
+成功時は、独自コンパイラの大まかな構成が次の順であることを確認できます。
+
+```text
+swift -> swift-frontend -> sil-optimizer-mandatory -> sil-optimizer-performance -> irgen
+```
 
 ## 7. XCFramework生成
 
@@ -227,6 +261,20 @@ Linux上で `Swift -> swift-frontend -> LLVM -> 実行` を検証する場合は
 ```
 
 `llvm-as` / `llc` が無い環境では `clang -x ir` で直接リンクするフォールバック経路で検証します。
+
+Swift ソースから **Full SILOptimizer を通した最適化済み SIL** を生成し、その SIL から IRGen/実行まで確認する場合は以下を使用します。
+
+```bash
+./Scripts/verify_swift_siloptimizer_to_irgen_pipeline.sh
+```
+
+このスクリプトは次を順に検証します。
+
+1. `-emit-silgen` で raw SIL が生成できる
+2. `-O -emit-sil` で canonical/optimized SIL が生成できる
+3. optimization record に `sil-inliner` が現れ、`-disable-sil-perf-optzns` 時には現れないことから Full SILOptimizer 側の性能最適化パスが動いていることを確認する
+4. `-parse-sil -emit-ir` で optimized SIL から LLVM IR が生成できる
+5. 生成IRをリンクして実行し、exit code `42` を返す
 
 `ci_release_ordered_build.sh` は本番向けに以下も実施します。
 

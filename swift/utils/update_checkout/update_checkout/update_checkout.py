@@ -27,6 +27,22 @@ SCRIPT_FILE = os.path.abspath(__file__)
 SCRIPT_DIR = os.path.dirname(SCRIPT_FILE)
 
 
+def _depth_args(args: CliArguments) -> List[str]:
+    depth = getattr(args, "depth", 0)
+    if getattr(args, "skip_history", False) and depth <= 0:
+        depth = 1
+    if depth and depth > 0:
+        return ["--depth", str(depth)]
+    return []
+
+
+def _fetch_args(args: CliArguments, with_tags: bool = True) -> List[str]:
+    fetch_args = ["fetch", "--recurse-submodules=yes"] + _depth_args(args)
+    if with_tags:
+        fetch_args.append("--tags")
+    return fetch_args
+
+
 class SkippedReason:
     def __init__(self, repo_name: str, reason: str):
         self.repo_name = repo_name
@@ -222,7 +238,7 @@ def update_single_repository(pool_args: UpdateArguments):
             except Exception:
                 Git.run(
                     repo_path,
-                    ["fetch", "--recurse-submodules=yes", "--tags"],
+                    _fetch_args(pool_args, with_tags=True),
                     echo=verbose,
                     prefix=prefix,
                 )
@@ -248,7 +264,7 @@ def update_single_repository(pool_args: UpdateArguments):
         # which branch was checked out during the fetch.
         Git.run(
             repo_path,
-            ["fetch", "--recurse-submodules=yes", "--tags"],
+            _fetch_args(pool_args, with_tags=True),
             echo=verbose,
             prefix=prefix,
         )
@@ -428,6 +444,7 @@ def update_all_repositories(
             scheme_map=scheme_map,
             tag=args.tag,
             timestamp=timestamp,
+            depth=args.depth,
             reset_to_remote=args.reset_to_remote,
             clean=args.clean,
             stash=args.stash,
@@ -464,14 +481,18 @@ def obtain_additional_swift_sources(pool_args: AdditionalSwiftSourcesArguments):
     if verbose:
         print("Cloning '" + pool_args.repo_name + "'")
 
-    if args.skip_history:
+    clone_depth_args = _depth_args(args)
+
+    if args.skip_history or clone_depth_args:
         Git.run(
             args.source_root,
             [
                 "clone",
                 "--recursive",
-                "--depth",
-                "1",
+            ]
+            + clone_depth_args
+            + [
+                "--single-branch",
                 "--branch",
                 repo_branch,
                 remote,

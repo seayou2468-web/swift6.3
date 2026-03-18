@@ -8,6 +8,7 @@ class CliArguments(argparse.Namespace):
     clone: bool
     clone_with_ssh: bool
     skip_history: bool
+    depth: int
     skip_tags: bool
     skip_repository_list: List[str]
     all_repositories: bool
@@ -49,6 +50,12 @@ repositories.
             "--skip-history",
             help="Skip histories when obtaining sources",
             action="store_true",
+        )
+        parser.add_argument(
+            "--depth",
+            type=int,
+            default=1,
+            help="Clone/fetch depth. Use 0 for full history.",
         )
         parser.add_argument(
             "--skip-tags", help="Skip tags when obtaining sources", action="store_true"

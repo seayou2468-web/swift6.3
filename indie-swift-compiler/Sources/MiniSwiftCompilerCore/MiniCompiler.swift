@@ -12,8 +12,36 @@ public typealias EmbeddedCompileCallback = @convention(c) (
     UnsafePointer<CChar>?,
     UnsafePointer<CChar>?
 ) -> Int32
+public typealias EmbeddedSILEmitCallback = @convention(c) (
+    UnsafePointer<CChar>?,
+    UnsafePointer<CChar>?,
+    UnsafePointer<CChar>?,
+    UnsafePointer<CChar>?,
+    UnsafePointer<CChar>?
+) -> Int32
+public typealias EmbeddedSILMandatoryOptimizeCallback = @convention(c) (
+    UnsafePointer<CChar>?,
+    UnsafePointer<CChar>?,
+    UnsafePointer<CChar>?
+) -> Int32
+public typealias EmbeddedSILPerformanceOptimizeCallback = @convention(c) (
+    UnsafePointer<CChar>?,
+    UnsafePointer<CChar>?,
+    UnsafePointer<CChar>?
+) -> Int32
+public typealias EmbeddedIRGenFromSILCallback = @convention(c) (
+    UnsafePointer<CChar>?,
+    UnsafePointer<CChar>?,
+    UnsafePointer<CChar>?,
+    UnsafePointer<CChar>?,
+    UnsafePointer<CChar>?
+) -> Int32
 
 private typealias AdapterSetCompileCallbackFn = @convention(c) (EmbeddedCompileCallback?) -> Int32
+private typealias AdapterSetEmitSILCallbackFn = @convention(c) (EmbeddedSILEmitCallback?) -> Int32
+private typealias AdapterSetEmitIRFromSILCallbackFn = @convention(c) (EmbeddedIRGenFromSILCallback?) -> Int32
+private typealias SILMandatoryOptimizerSetCallbackFn = @convention(c) (EmbeddedSILMandatoryOptimizeCallback?) -> Int32
+private typealias SILPerformanceOptimizerSetCallbackFn = @convention(c) (EmbeddedSILPerformanceOptimizeCallback?) -> Int32
 
 public enum MiniCompilerError: Error, CustomStringConvertible {
     case sourceReadFailed(String)
@@ -30,7 +58,7 @@ public enum MiniCompilerError: Error, CustomStringConvertible {
         case .missingMain:
             "main() 相当のトップレベル式が見つかりませんでした"
         case .swiftFrontendNotFound:
-            "swift frontend adapter 実体が未リンクです（swift_irgen_adapter_compile が解決できません）"
+            "staged frontend/optimizer/irgen adapter 実体が未リンクです"
         }
     }
 }
@@ -47,6 +75,54 @@ public struct CompileOutput {
 
 public struct MiniCompiler {
     public init() {}
+
+    public static func defaultArchitecture() throws -> CompilerArchitecture {
+        try CompilerArchitectureLoader.loadDefaultArchitecture()
+    }
+
+    public static func hasExpectedEmbeddedPipeline() throws -> Bool {
+        try defaultArchitecture().isExpectedEmbeddedOrder
+    }
+
+    @discardableResult
+    public static func setEmbeddedSILEmitCallback(_ callback: EmbeddedSILEmitCallback?) -> Int32 {
+        SwiftFrontendAdapterBridge.runtimeSILEmitCallback = callback
+        guard let symbol = dlsym(nil, "swift_irgen_adapter_set_emit_sil_callback") else {
+            return callback == nil ? -10 : 0
+        }
+        let fn = unsafeBitCast(symbol, to: AdapterSetEmitSILCallbackFn.self)
+        return fn(callback)
+    }
+
+    @discardableResult
+    public static func setEmbeddedSILMandatoryOptimizerCallback(_ callback: EmbeddedSILMandatoryOptimizeCallback?) -> Int32 {
+        SILOptimizerAdapterBridge.runtimeMandatoryOptimizeCallback = callback
+        guard let symbol = dlsym(nil, "swift_sil_optimizer_adapter_set_mandatory_callback") else {
+            return callback == nil ? -10 : 0
+        }
+        let fn = unsafeBitCast(symbol, to: SILMandatoryOptimizerSetCallbackFn.self)
+        return fn(callback)
+    }
+
+    @discardableResult
+    public static func setEmbeddedSILPerformanceOptimizerCallback(_ callback: EmbeddedSILPerformanceOptimizeCallback?) -> Int32 {
+        SILOptimizerAdapterBridge.runtimePerformanceOptimizeCallback = callback
+        guard let symbol = dlsym(nil, "swift_sil_optimizer_adapter_set_performance_callback") else {
+            return callback == nil ? -10 : 0
+        }
+        let fn = unsafeBitCast(symbol, to: SILPerformanceOptimizerSetCallbackFn.self)
+        return fn(callback)
+    }
+
+    @discardableResult
+    public static func setEmbeddedIRGenFromSILCallback(_ callback: EmbeddedIRGenFromSILCallback?) -> Int32 {
+        IRGenAdapterBridge.runtimeIRGenCallback = callback
+        guard let symbol = dlsym(nil, "swift_irgen_adapter_set_emit_ir_from_sil_callback") else {
+            return callback == nil ? -10 : 0
+        }
+        let fn = unsafeBitCast(symbol, to: AdapterSetEmitIRFromSILCallbackFn.self)
+        return fn(callback)
+    }
 
     @discardableResult
     public static func setEmbeddedCompileCallback(_ callback: EmbeddedCompileCallback?) -> Int32 {
@@ -118,7 +194,15 @@ private struct SwiftFrontendBridge {
         try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tmpDir) }
 
-        guard let linkedResult = try SwiftFrontendAdapterBridge().emitIRUsingLinkedAdapter(
+        if let stagedResult = try emitIRUsingFullPipeline(
+            source: source,
+            moduleName: moduleName,
+            temporaryDirectory: tmpDir
+        ) {
+            return stagedResult
+        }
+
+        guard let linkedResult = try SwiftFrontendAdapterBridge().emitIRUsingSingleStageAdapter(
             source: source,
             moduleName: moduleName,
             temporaryDirectory: tmpDir
@@ -126,6 +210,52 @@ private struct SwiftFrontendBridge {
             throw MiniCompilerError.swiftFrontendNotFound
         }
         return linkedResult
+    }
+
+    private func emitIRUsingFullPipeline(
+        source: String,
+        moduleName: String,
+        temporaryDirectory: URL
+    ) throws -> CompileOutput? {
+        let rawSILPath = temporaryDirectory.appendingPathComponent("raw.sil")
+        let mandatorySILPath = temporaryDirectory.appendingPathComponent("mandatory.sil")
+        let optimizedSILPath = temporaryDirectory.appendingPathComponent("optimized.sil")
+        let outputPath = temporaryDirectory.appendingPathComponent("output.ll")
+
+        guard try SwiftFrontendAdapterBridge().emitSILUsingLinkedAdapter(
+            source: source,
+            moduleName: moduleName,
+            outputPath: rawSILPath
+        ) else {
+            return nil
+        }
+
+        guard try SILOptimizerAdapterBridge().runMandatoryOptimizerUsingLinkedAdapter(
+            inputPath: rawSILPath,
+            moduleName: moduleName,
+            outputPath: mandatorySILPath
+        ) else {
+            return nil
+        }
+
+        guard try SILOptimizerAdapterBridge().runPerformanceOptimizerUsingLinkedAdapter(
+            inputPath: mandatorySILPath,
+            moduleName: moduleName,
+            outputPath: optimizedSILPath
+        ) else {
+            return nil
+        }
+
+        guard try IRGenAdapterBridge().emitIRUsingLinkedAdapter(
+            inputPath: optimizedSILPath,
+            moduleName: moduleName,
+            outputPath: outputPath
+        ) else {
+            return nil
+        }
+
+        let ir = try String(contentsOf: outputPath, encoding: .utf8)
+        return CompileOutput(llvmIR: ir, diagnostics: [])
     }
 }
 
@@ -135,9 +265,48 @@ private struct SwiftFrontendAdapterBridge {
         UnsafePointer<CChar>?,
         UnsafePointer<CChar>?
     ) -> Int32
+    typealias EmitSILEntryFn = @convention(c) (
+        UnsafePointer<CChar>?,
+        UnsafePointer<CChar>?,
+        UnsafePointer<CChar>?
+    ) -> Int32
     nonisolated(unsafe) static var runtimeCallback: EmbeddedCompileCallback?
+    nonisolated(unsafe) static var runtimeSILEmitCallback: EmbeddedSILEmitCallback?
 
-    func emitIRUsingLinkedAdapter(
+    func emitSILUsingLinkedAdapter(
+        source: String,
+        moduleName: String,
+        outputPath: URL
+    ) throws -> Bool {
+        applyEmbeddedSDKDefaults()
+        let rc: Int32
+        if let callback = Self.runtimeSILEmitCallback {
+            rc = source.withCString { src in
+                moduleName.withCString { mod in
+                    outputPath.path.withCString { out in
+                        callback(src, mod, out, nil, nil)
+                    }
+                }
+            }
+        } else if let entryFn = resolveSILEntryFunction() {
+            rc = source.withCString { src in
+                moduleName.withCString { mod in
+                    outputPath.path.withCString { out in
+                        entryFn(src, mod, out)
+                    }
+                }
+            }
+        } else {
+            return false
+        }
+
+        guard rc == 0 else {
+            throw MiniCompilerError.unsupportedSyntax("swift frontend SIL生成失敗: rc=\(rc)")
+        }
+        return true
+    }
+
+    func emitIRUsingSingleStageAdapter(
         source: String,
         moduleName: String,
         temporaryDirectory: URL
@@ -180,6 +349,13 @@ private struct SwiftFrontendAdapterBridge {
         return unsafeBitCast(symbol, to: AdapterCompileEntryFn.self)
     }
 
+    private func resolveSILEntryFunction() -> EmitSILEntryFn? {
+        guard let symbol = dlsym(nil, "swift_irgen_adapter_emit_sil") else {
+            return nil
+        }
+        return unsafeBitCast(symbol, to: EmitSILEntryFn.self)
+    }
+
     func applyEmbeddedSDKDefaults() {
         if let target = ProcessInfo.processInfo.environment["SWIFT_TARGET_TRIPLE"], !target.isEmpty {
             _ = setenv("SWIFT_TARGET_TRIPLE", target, 1)
@@ -205,5 +381,146 @@ private struct SwiftFrontendAdapterBridge {
             return nil
         }
         return sdk.path
+    }
+}
+
+private struct SILOptimizerAdapterBridge {
+    typealias MandatoryOptimizeEntryFn = @convention(c) (
+        UnsafePointer<CChar>?,
+        UnsafePointer<CChar>?,
+        UnsafePointer<CChar>?
+    ) -> Int32
+    typealias PerformanceOptimizeEntryFn = @convention(c) (
+        UnsafePointer<CChar>?,
+        UnsafePointer<CChar>?,
+        UnsafePointer<CChar>?
+    ) -> Int32
+    nonisolated(unsafe) static var runtimeMandatoryOptimizeCallback: EmbeddedSILMandatoryOptimizeCallback?
+    nonisolated(unsafe) static var runtimePerformanceOptimizeCallback: EmbeddedSILPerformanceOptimizeCallback?
+
+    func runMandatoryOptimizerUsingLinkedAdapter(
+        inputPath: URL,
+        moduleName: String,
+        outputPath: URL
+    ) throws -> Bool {
+        let rc: Int32
+        if let callback = Self.runtimeMandatoryOptimizeCallback {
+            rc = inputPath.path.withCString { input in
+                moduleName.withCString { mod in
+                    outputPath.path.withCString { out in
+                        callback(input, mod, out)
+                    }
+                }
+            }
+        } else if let entryFn = resolveMandatoryEntryFunction() {
+            rc = inputPath.path.withCString { input in
+                moduleName.withCString { mod in
+                    outputPath.path.withCString { out in
+                        entryFn(input, mod, out)
+                    }
+                }
+            }
+        } else {
+            return false
+        }
+
+        guard rc == 0 else {
+            throw MiniCompilerError.unsupportedSyntax("SIL mandatory optimizer 実行失敗: rc=\(rc)")
+        }
+        return true
+    }
+
+    func runPerformanceOptimizerUsingLinkedAdapter(
+        inputPath: URL,
+        moduleName: String,
+        outputPath: URL
+    ) throws -> Bool {
+        let rc: Int32
+        if let callback = Self.runtimePerformanceOptimizeCallback {
+            rc = inputPath.path.withCString { input in
+                moduleName.withCString { mod in
+                    outputPath.path.withCString { out in
+                        callback(input, mod, out)
+                    }
+                }
+            }
+        } else if let entryFn = resolvePerformanceEntryFunction() {
+            rc = inputPath.path.withCString { input in
+                moduleName.withCString { mod in
+                    outputPath.path.withCString { out in
+                        entryFn(input, mod, out)
+                    }
+                }
+            }
+        } else {
+            return false
+        }
+
+        guard rc == 0 else {
+            throw MiniCompilerError.unsupportedSyntax("SIL performance optimizer 実行失敗: rc=\(rc)")
+        }
+        return true
+    }
+
+    private func resolveMandatoryEntryFunction() -> MandatoryOptimizeEntryFn? {
+        guard let symbol = dlsym(nil, "swift_sil_optimizer_adapter_run_mandatory") else {
+            return nil
+        }
+        return unsafeBitCast(symbol, to: MandatoryOptimizeEntryFn.self)
+    }
+
+    private func resolvePerformanceEntryFunction() -> PerformanceOptimizeEntryFn? {
+        guard let symbol = dlsym(nil, "swift_sil_optimizer_adapter_run_performance") else {
+            return nil
+        }
+        return unsafeBitCast(symbol, to: PerformanceOptimizeEntryFn.self)
+    }
+}
+
+private struct IRGenAdapterBridge {
+    typealias EmitIRFromSILEntryFn = @convention(c) (
+        UnsafePointer<CChar>?,
+        UnsafePointer<CChar>?,
+        UnsafePointer<CChar>?
+    ) -> Int32
+    nonisolated(unsafe) static var runtimeIRGenCallback: EmbeddedIRGenFromSILCallback?
+
+    func emitIRUsingLinkedAdapter(
+        inputPath: URL,
+        moduleName: String,
+        outputPath: URL
+    ) throws -> Bool {
+        let rc: Int32
+        if let callback = Self.runtimeIRGenCallback {
+            rc = inputPath.path.withCString { input in
+                moduleName.withCString { mod in
+                    outputPath.path.withCString { out in
+                        callback(input, mod, out, nil, nil)
+                    }
+                }
+            }
+        } else if let entryFn = resolveLinkedAdapterEntryFunction() {
+            rc = inputPath.path.withCString { input in
+                moduleName.withCString { mod in
+                    outputPath.path.withCString { out in
+                        entryFn(input, mod, out)
+                    }
+                }
+            }
+        } else {
+            return false
+        }
+
+        guard rc == 0 else {
+            throw MiniCompilerError.unsupportedSyntax("IRGen 実行失敗: rc=\(rc)")
+        }
+        return true
+    }
+
+    private func resolveLinkedAdapterEntryFunction() -> EmitIRFromSILEntryFn? {
+        guard let symbol = dlsym(nil, "swift_irgen_adapter_emit_ir_from_sil") else {
+            return nil
+        }
+        return unsafeBitCast(symbol, to: EmitIRFromSILEntryFn.self)
     }
 }

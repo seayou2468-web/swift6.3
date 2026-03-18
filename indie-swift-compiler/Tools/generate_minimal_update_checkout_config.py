@@ -63,6 +63,8 @@ def main() -> None:
     minimal = {
         "ssh-clone-pattern": full.get("ssh-clone-pattern", "git@github.com:%s.git"),
         "https-clone-pattern": full.get("https-clone-pattern", "https://github.com/%s.git"),
+        "clone-depth": 1,
+        "fetch-depth": 1,
         "repos": pick_repos(full, args.repos),
         "default-branch-scheme": args.scheme,
         "branch-schemes": {

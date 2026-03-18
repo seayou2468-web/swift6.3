@@ -27,6 +27,8 @@ OUT_DIR="$ROOT_DIR/Artifacts"
 UNIFIED_OUT="$OUT_DIR/SwiftToolchainKit.xcframework"
 EMBEDDED_IOS_LIB="${SWIFT_FRONTEND_EMBEDDED_LIB_IOS:-}"
 EMBEDDED_SIM_LIB="${SWIFT_FRONTEND_EMBEDDED_LIB_SIM:-}"
+SILOPT_IOS_LIB="${SWIFT_SILOPTIMIZER_EMBEDDED_LIB_IOS:-}"
+SILOPT_SIM_LIB="${SWIFT_SILOPTIMIZER_EMBEDDED_LIB_SIM:-}"
 RUNTIME_IOS_LIB=""
 RUNTIME_SIM_LIB=""
 RUNTIME_IOS_HEADERS=""
@@ -239,6 +241,19 @@ XC_ARGS=(
   -library "$LLVM_IOS_INSTALL/lib/libclang-cpp.a" -headers "$LLVM_IOS_INSTALL/include"
   -library "$LLVM_SIM_INSTALL/lib/libclang-cpp.a" -headers "$LLVM_SIM_INSTALL/include"
 )
+if [[ -n "$SILOPT_IOS_LIB" && -n "$SILOPT_SIM_LIB" ]]; then
+  if [[ ! -f "$SILOPT_IOS_LIB" || ! -f "$SILOPT_SIM_LIB" ]]; then
+    echo "エラー: 指定された SILOptimizer ライブラリが見つかりません。"
+    echo "  iOS: $SILOPT_IOS_LIB"
+    echo "  Sim: $SILOPT_SIM_LIB"
+    exit 1
+  fi
+  echo "Swift SILOptimizer を unified に追加します"
+  XC_ARGS+=(-library "$SILOPT_IOS_LIB" -headers "$ROOT_DIR/Native/SwiftSILOptimizerAdapter")
+  XC_ARGS+=(-library "$SILOPT_SIM_LIB" -headers "$ROOT_DIR/Native/SwiftSILOptimizerAdapter")
+else
+  echo "警告: SILOptimizer static lib が未指定のため unified への追加をスキップします"
+fi
 if [[ -n "$RUNTIME_IOS_LIB" && -n "$RUNTIME_SIM_LIB" ]]; then
   echo "Swift runtime を unified に追加します"
   XC_ARGS+=(-library "$RUNTIME_IOS_LIB" -headers "$RUNTIME_IOS_HEADERS")

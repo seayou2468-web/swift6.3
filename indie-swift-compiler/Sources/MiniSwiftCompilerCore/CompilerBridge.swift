@@ -20,4 +20,8 @@ public final class MiniSwiftCompilerBridge {
         )
         return output.llvmIR
     }
+
+    public func compilerStageOrder() throws -> [String] {
+        try MiniCompiler.defaultArchitecture().stageNames
+    }
 }
