@@ -41,8 +41,10 @@ require_tool git
 require_tool python3
 
 XCODE_VER="$(xcodebuild -version | head -n1 | awk '{print $2}')"
-if [[ "$XCODE_VER" != "26.1.1" ]]; then
-  echo "エラー: Xcode 26.1.1 が必要です。検出: $XCODE_VER"
+REQUIRED_XCODE_VER="${REQUIRED_XCODE_VERSION:-26.1.1}"
+if [[ -n "$REQUIRED_XCODE_VER" && "$XCODE_VER" != "$REQUIRED_XCODE_VER" ]]; then
+  echo "エラー: Xcode $REQUIRED_XCODE_VER が必要です。検出: $XCODE_VER"
+  echo "回避する場合は REQUIRED_XCODE_VERSION='' を指定してください。"
   exit 1
 fi
 

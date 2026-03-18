@@ -1,0 +1,54 @@
+name: Release Toolchain Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      scheme:
+        description: "Branch scheme (e.g. release/6.3)"
+        required: false
+        default: "release/6.3"
+  push:
+    branches:
+      - work
+    paths:
+      - "indie-swift-compiler/**"
+      - ".github/workflows/release-toolchain.yml"
+
+jobs:
+  build-release:
+    runs-on: macos-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: indie-swift-compiler
+
+    env:
+      SCHEME: ${{ github.event.inputs.scheme || 'release/6.3' }}
+      REQUIRED_XCODE_VERSION: ""
+      ALLOW_RUNTIME_FAILURE: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show tool versions
+        run: |
+          sw_vers
+          xcodebuild -version
+          swift --version
+          cmake --version
+          ninja --version
+
+      - name: Ordered release build
+        run: |
+          ./Scripts/ci_release_ordered_build.sh "$SCHEME"
+
+      - name: Upload Artifacts directory
+        uses: actions/upload-artifact@v4
+        with:
+          name: toolchain-artifacts-${{ github.run_number }}
+          path: |
+            indie-swift-compiler/Artifacts/**
+            indie-swift-compiler/Dist/**
+          if-no-files-found: error
+          retention-days: 14

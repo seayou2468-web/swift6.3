@@ -175,6 +175,24 @@ Artifacts/Clang.xcframework
 ./Scripts/build_unified_toolchain_xcframework.sh release/6.3
 ```
 
+GitHub Actions（`macos-latest`）でリリース順ビルドを行う場合:
+
+```bash
+# 手元実行
+./Scripts/ci_release_ordered_build.sh release/6.3
+
+# CI実行
+.github/workflows/release-toolchain.yml
+```
+
+Workflow は順番固定で次を実行し、成果物を `upload-artifact` でダウンロード可能にします。
+
+1. `swift test`
+2. `bootstrap_minimal_toolchain_repos`
+3. `build_unified_toolchain_xcframework`（llvm/clang -> swift frontend lib -> core -> unified）
+4. `build_swift_frontend_xcframework`
+5. `build_swift_runtime_xcframework`（任意）
+
 このスクリプトは以下を順番に実行します。
 
 1. `Config/minimal-update-checkout-config.json` から `release/6.3` の `llvm-project` ref を取得
