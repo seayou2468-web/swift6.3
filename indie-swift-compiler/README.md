@@ -1,4 +1,4 @@
-# Indie Swift Compiler (SwiftSyntaxベース)
+# Indie Swift Compiler (swift-frontend adapterベース)
 
 ## 1. ビルド対象と環境（最初に確認）
 
@@ -60,10 +60,12 @@ indie-swift-compiler/
 
 ## 4. できること（現状）
 
-- `func foo() -> Int { return 1 + 2 }` のようなシンプルな関数をパース。
-- `let` 束縛 + 変数参照 + `+ - * /` を含む式を独自IRにlowering。
-- LLVM IR 文字列を生成（`alloca/load/add/sub/mul/sdiv/ret`）。
-- `SWIFT_FRONTEND_PATH` を設定すると、既定で `swift-frontend` 経路（Swift本家互換優先）を使用。
+- `MiniCompiler` は `swift-frontend` adapter 経路のみを利用し、SwiftソースからLLVM IR文字列を生成。
+- Swift側の実行は `swift_irgen_adapter_compile` シンボル経由（CLIフォールバックなし）。
+- `SwiftIRGenAdapter` は `swift_frontend_embedded_compile` 実体（または callback）を呼び出してIR生成。
+- `SWIFT_TARGET_TRIPLE` / `SWIFT_SDK_PATH` / `Documents/sdk` の順でターゲット/SDK設定を適用。
+- `build_swift_frontend_xcframework.sh` / `build_unified_toolchain_xcframework.sh` は
+  実体ライブラリ同梱（`SWIFT_FRONTEND_EMBEDDED_LIB_IOS` / `SWIFT_FRONTEND_EMBEDDED_LIB_SIM`）を必須化。
 
 ## 5. クイックスタート
 
@@ -109,10 +111,12 @@ swift test
 
 現在の Adapter API:
 
-- `swift_irgen_adapter_set_frontend_path(const char*)`
+- `swift_irgen_adapter_set_frontend_path(const char*)`（互換用・常にエラー返却）
+- `swift_irgen_adapter_set_compile_callback(swift_irgen_adapter_compile_fn)`
 - `swift_irgen_adapter_compile(const char*, const char*, const char*)`
 
-この実装は `swift-frontend -frontend -emit-ir` を呼び出し、`.ll` を生成します。
+`libSwiftFrontend.a` は、adapter本体 + `swift_frontend_embedded_compile` 実装ライブラリを同梱した
+静的ライブラリとして生成します。
 
 ## 6.1 最小依存だけ取得する（update-checkout最小JSON）
 
@@ -132,8 +136,14 @@ swift test
 - `llvm-project`
 - `cmark`
 - `swift-syntax`
-- `swift-driver`
 - `swift-llvm-bindings`
+
+無効化ポリシー（`compatibility-profile.json`）:
+
+- Swift Package Manager 連携
+- Macro system
+- Indexing / IDE support
+- Driver（`swiftc` 相当）
 
 ## 7. XCFramework生成
 
@@ -166,12 +176,53 @@ Artifacts/Clang.xcframework
 ./Scripts/build_unified_toolchain_xcframework.sh release/6.3
 ```
 
+GitHub Actions（`macos-latest`）でリリース順ビルドを行う場合:
+
+```bash
+# 手元実行
+./Scripts/ci_release_ordered_build.sh release/6.3
+
+# CI実行
+.github/workflows/release-toolchain.yml
+```
+
+Workflow は順番固定で次を実行し、成果物を `upload-artifact` でダウンロード可能にします。
+
+1. `swift test`
+2. `bootstrap_minimal_toolchain_repos`
+3. `build_unified_toolchain_xcframework`（llvm/clang -> swift frontend lib -> core -> unified）
+4. `build_swift_frontend_xcframework`
+5. `build_swift_runtime_xcframework`（任意）
+
+Linux上で `Swift -> swift-frontend -> LLVM -> 実行` を検証する場合は以下を使用します。
+
+```bash
+./Scripts/verify_swift_frontend_to_llvm_pipeline.sh
+```
+
+`llvm-as` / `llc` が無い環境では `clang -x ir` で直接リンクするフォールバック経路で検証します。
+
+`ci_release_ordered_build.sh` は本番向けに以下も実施します。
+
+- 必須成果物（`SwiftToolchainKit.xcframework`, `SwiftFrontend.xcframework`）の存在チェック
+- `Dist/release-manifest.txt` 出力（scheme, build_id, commit, 生成物一覧）
+- 各 xcframework zip の SHA-256 および最終配布zipの SHA-256 を `Dist/release-checksums.txt` に出力
+- `Scripts/verify_release_bundle.sh` で manifest / checksums / 必須成果物を検証
+- 各ステップの詳細ログを `Dist/logs/*.log` に保存（通常出力は最小化、失敗時のみログ全文表示）
+- `NSUnbufferedIO=YES` を既定化し、CIログの出力遅延を抑制
+
 このスクリプトは以下を順番に実行します。
 
 1. `Config/minimal-update-checkout-config.json` から `release/6.3` の `llvm-project` ref を取得
 2. LLVM/Clang を arm64 (device/simulator) でビルド
 3. MiniSwiftCompilerCore をビルド
 4. `SwiftToolchainKit.xcframework` を生成
+
+統合XCFrameworkには以下を同梱します。
+
+- `MiniSwiftCompilerCore.framework`（device/simulator）
+- `libSwiftFrontend.a` + `SwiftIRGenAdapter.h`（device/simulator）
+- `libLLVM.a` / `libclang-cpp.a`（device/simulator）
 
 ## 8. iOS組み込み
 
@@ -198,15 +249,21 @@ import MiniSwiftCompilerCore
 let bridge = MiniSwiftCompilerBridge()
 let ir = try bridge.compileToIRUsingSwiftFrontend(
     source: "struct S<T> { let value: T }\\nfunc main() -> Int { 1 }",
-    moduleName: "AppModule",
-    swiftFrontendPath: "/path/to/swift-frontend"
+    moduleName: "AppModule"
 )
 print(ir)
 ```
 
+また、以下の環境変数を与えると iOS SDK を指定したIR出力が可能です。
+
+- `SWIFT_TARGET_TRIPLE` (例: `arm64-apple-ios15.0`)
+- `SWIFT_SDK_PATH` または `SWIFT_SDK` (例: `iphoneos`)
+
+デフォルトでは `Documents/sdk` が存在すればそれを `-sdk` に使います（アプリ同梱SDK向け）。
+
 ## 9. 依存整理
 
-- 必須依存: `swift-syntax`（`SwiftParser`, `SwiftSyntax`）
+- SwiftPM必須依存: なし（`Package.swift` は `dependencies: []`）
 - `../swift`（本家リポジトリ）: **不要**
 - フル対応フェーズで使うツールチェーン取得は `minimal-update-checkout-config.json` 経由で最小化
 - 機能方針は `Config/compatibility-profile.json` で管理
@@ -229,7 +286,7 @@ print(ir)
 
 - `Vendor/SwiftFrontendExtract/` は **Swift本家の処理を丸ごと移植したものではありません**。
 - Swift本家からは「フロントエンド〜IRGenの導線確認に必要な参照ファイル」をコピーし、
-  独自実装側（`MiniSwiftCompilerCore`）は SwiftSyntax ベースで最小再構築しています。
+  独自実装側（`MiniSwiftCompilerCore`）は adapter 経由の最小ブリッジとして構成しています。
 - そのため、依存は大幅に軽くなりますが、本家と同等機能には未到達です。
 - 本家の「フルSwift対応（型検査/SIL最適化/完全IRGen）」を目指す場合は、
   Swiftコンパイラ実装（Frontend, AST, SIL, IRGen）の大規模な取り込みと依存解決が必要です。

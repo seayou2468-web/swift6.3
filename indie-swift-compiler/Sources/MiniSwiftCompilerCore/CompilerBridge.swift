@@ -12,13 +12,11 @@ public final class MiniSwiftCompilerBridge {
     /// swift-frontendを利用してLLVM IRを生成します（Swift互換性優先）。
     public func compileToIRUsingSwiftFrontend(
         source: String,
-        moduleName: String,
-        swiftFrontendPath: String
+        moduleName: String
     ) throws -> String {
         let output = try MiniCompiler().compileSourceUsingSwiftFrontend(
             source,
-            moduleName: moduleName,
-            swiftFrontendPath: swiftFrontendPath
+            moduleName: moduleName
         )
         return output.llvmIR
     }

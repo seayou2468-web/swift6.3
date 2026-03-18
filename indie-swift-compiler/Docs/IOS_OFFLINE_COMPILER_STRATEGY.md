@@ -10,9 +10,9 @@
 1. **ビルド時に最小ツールチェーンを同梱**
    - `swift-frontend`
    - `llvm-project`（必要なライブラリのみ）
-   - `cmark`, `swift-syntax`, `swift-driver`, `swift-llvm-bindings`
+   - `cmark`, `swift-syntax`, `swift-llvm-bindings`
 2. **アプリ実行時はローカルのみ**
-   - `swift-frontend -emit-ir` 相当のパスをローカルで実行
+   - `swift_irgen_adapter_compile` を経由して埋め込みfrontend実体を実行（CLI起動なし）
    - サーバー通信なし
 3. **実行モデルを分離**
    - `コンパイル(ソース->IR)` と `実行` を分離し、iOS制約に抵触しない運用を選ぶ
@@ -24,8 +24,5 @@
 
 ## このリポジトリでの位置づけ
 
-- `MiniCompiler` は
-  - `lightweight`（軽量/限定）
-  - `swiftFrontend`（互換優先）
-  の2経路を持つ。
+- `MiniCompiler` は `swiftFrontend`（互換優先）経路を持つ。
 - `compatibility-profile.json` で依存/機能削減ポリシーを管理する。

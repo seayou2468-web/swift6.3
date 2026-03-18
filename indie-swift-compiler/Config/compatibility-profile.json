@@ -3,17 +3,21 @@
   "goal": "Swift言語互換性を優先しつつ、余分な機能を削って依存とビルド負荷を最小化する",
   "backend": {
     "primary": "swift-frontend",
-    "fallback": "lightweight-swiftsyntax"
+    "fallback": "none"
   },
   "enable": [
     "swift",
     "llvm-project",
     "cmark",
     "swift-syntax",
-    "swift-driver",
     "swift-llvm-bindings"
   ],
   "disable": [
+    "swift-package-manager",
+    "swift-driver",
+    "swift-macro-system",
+    "indexing",
+    "ide-support",
     "lldb",
     "sourcekit-lsp",
     "swift-docc",
