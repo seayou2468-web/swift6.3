@@ -12,7 +12,7 @@
    - `llvm-project`（必要なライブラリのみ）
    - `cmark`, `swift-syntax`, `swift-llvm-bindings`
 2. **アプリ実行時はローカルのみ**
-   - `swift-frontend -emit-ir` 相当のパスをローカルで実行
+   - `swift_irgen_adapter_compile` を経由して埋め込みfrontend実体を実行（CLI起動なし）
    - サーバー通信なし
 3. **実行モデルを分離**
    - `コンパイル(ソース->IR)` と `実行` を分離し、iOS制約に抵触しない運用を選ぶ

@@ -1,4 +1,4 @@
-# Indie Swift Compiler (SwiftSyntaxベース)
+# Indie Swift Compiler (swift-frontend adapterベース)
 
 ## 1. ビルド対象と環境（最初に確認）
 
@@ -60,13 +60,12 @@ indie-swift-compiler/
 
 ## 4. できること（現状）
 
-- `func foo() -> Int { return 1 + 2 }` のようなシンプルな関数をパース。
-- `let` 束縛 + 変数参照 + `+ - * /` を含む式を独自IRにlowering。
-- LLVM IR 文字列を生成（`alloca/load/add/sub/mul/sdiv/ret`）。
-- `swift-frontend` はパス未指定でも自動探索（`SWIFT_FRONTEND_PATH` → `xcrun --find` → `PATH`）。
-- Swift frontend adapter を `libSwiftFrontend.a` + `SwiftIRGenAdapter.h` として iOS/simulator 向けに生成可能。
-- `swift_irgen_adapter_compile` シンボルをリンク済みなら、Swift側は `.h`/`.a` 経由で実行（Swift側CLI起動なし）。
-- frontend 実行時の `-sdk` は iOSアプリ内 `Documents/sdk` を最優先で使用（未存在時は環境変数・xcrun）。
+- `MiniCompiler` は `swift-frontend` adapter 経路のみを利用し、SwiftソースからLLVM IR文字列を生成。
+- Swift側の実行は `swift_irgen_adapter_compile` シンボル経由（CLIフォールバックなし）。
+- `SwiftIRGenAdapter` は `swift_frontend_embedded_compile` 実体（または callback）を呼び出してIR生成。
+- `SWIFT_TARGET_TRIPLE` / `SWIFT_SDK_PATH` / `Documents/sdk` の順でターゲット/SDK設定を適用。
+- `build_swift_frontend_xcframework.sh` / `build_unified_toolchain_xcframework.sh` は
+  実体ライブラリ同梱（`SWIFT_FRONTEND_EMBEDDED_LIB_IOS` / `SWIFT_FRONTEND_EMBEDDED_LIB_SIM`）を必須化。
 
 ## 5. クイックスタート
 
@@ -112,10 +111,12 @@ swift test
 
 現在の Adapter API:
 
-- `swift_irgen_adapter_set_frontend_path(const char*)`
+- `swift_irgen_adapter_set_frontend_path(const char*)`（互換用・常にエラー返却）
+- `swift_irgen_adapter_set_compile_callback(swift_irgen_adapter_compile_fn)`
 - `swift_irgen_adapter_compile(const char*, const char*, const char*)`
 
-`libSwiftFrontend.a` 側の callback を C API で叩き、内部スレッドでコンパイル処理を実行します。
+`libSwiftFrontend.a` は、adapter本体 + `swift_frontend_embedded_compile` 実装ライブラリを同梱した
+静的ライブラリとして生成します。
 
 ## 6.1 最小依存だけ取得する（update-checkout最小JSON）
 
@@ -262,7 +263,7 @@ print(ir)
 
 ## 9. 依存整理
 
-- 必須依存: `swift-syntax`（`SwiftParser`, `SwiftSyntax`）
+- SwiftPM必須依存: なし（`Package.swift` は `dependencies: []`）
 - `../swift`（本家リポジトリ）: **不要**
 - フル対応フェーズで使うツールチェーン取得は `minimal-update-checkout-config.json` 経由で最小化
 - 機能方針は `Config/compatibility-profile.json` で管理
@@ -285,7 +286,7 @@ print(ir)
 
 - `Vendor/SwiftFrontendExtract/` は **Swift本家の処理を丸ごと移植したものではありません**。
 - Swift本家からは「フロントエンド〜IRGenの導線確認に必要な参照ファイル」をコピーし、
-  独自実装側（`MiniSwiftCompilerCore`）は SwiftSyntax ベースで最小再構築しています。
+  独自実装側（`MiniSwiftCompilerCore`）は adapter 経由の最小ブリッジとして構成しています。
 - そのため、依存は大幅に軽くなりますが、本家と同等機能には未到達です。
 - 本家の「フルSwift対応（型検査/SIL最適化/完全IRGen）」を目指す場合は、
   Swiftコンパイラ実装（Frontend, AST, SIL, IRGen）の大規模な取り込みと依存解決が必要です。

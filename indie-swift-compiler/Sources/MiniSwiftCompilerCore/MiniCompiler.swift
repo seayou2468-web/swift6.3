@@ -5,6 +5,16 @@ import Darwin
 import Glibc
 #endif
 
+public typealias EmbeddedCompileCallback = @convention(c) (
+    UnsafePointer<CChar>?,
+    UnsafePointer<CChar>?,
+    UnsafePointer<CChar>?,
+    UnsafePointer<CChar>?,
+    UnsafePointer<CChar>?
+) -> Int32
+
+private typealias AdapterSetCompileCallbackFn = @convention(c) (EmbeddedCompileCallback?) -> Int32
+
 public enum MiniCompilerError: Error, CustomStringConvertible {
     case sourceReadFailed(String)
     case unsupportedSyntax(String)
@@ -20,7 +30,7 @@ public enum MiniCompilerError: Error, CustomStringConvertible {
         case .missingMain:
             "main() 相当のトップレベル式が見つかりませんでした"
         case .swiftFrontendNotFound:
-            "swift frontend adapter が未リンクか、実行に必要なツールチェーンが見つかりませんでした"
+            "swift frontend adapter 実体が未リンクです（swift_irgen_adapter_compile が解決できません）"
         }
     }
 }
@@ -37,6 +47,16 @@ public struct CompileOutput {
 
 public struct MiniCompiler {
     public init() {}
+
+    @discardableResult
+    public static func setEmbeddedCompileCallback(_ callback: EmbeddedCompileCallback?) -> Int32 {
+        SwiftFrontendAdapterBridge.runtimeCallback = callback
+        guard let symbol = dlsym(nil, "swift_irgen_adapter_set_compile_callback") else {
+            return callback == nil ? -10 : 0
+        }
+        let fn = unsafeBitCast(symbol, to: AdapterSetCompileCallbackFn.self)
+        return fn(callback)
+    }
 
     public enum BackendMode {
         /// swift-frontend へ委譲（Swift本家互換性優先）
@@ -103,71 +123,46 @@ private struct SwiftFrontendBridge {
             moduleName: moduleName,
             temporaryDirectory: tmpDir
         ) else {
-            guard let frontendPath = SwiftFrontendResolver.resolveFrontendExecutable() else {
-                throw MiniCompilerError.swiftFrontendNotFound
-            }
-
-            let src = tmpDir.appendingPathComponent("input.swift")
-            let out = tmpDir.appendingPathComponent("output.ll")
-            try source.write(to: src, atomically: true, encoding: .utf8)
-
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: frontendPath)
-            process.arguments = [
-                "-frontend",
-                "-emit-ir",
-                src.path,
-                "-module-name",
-                moduleName,
-                "-o",
-                out.path
-            ]
-            SwiftFrontendAdapterBridge().applyEmbeddedSDKDefaults()
-
-            let stderr = Pipe()
-            process.standardError = stderr
-            try process.run()
-            process.waitUntilExit()
-
-            let diagnosticsData = stderr.fileHandleForReading.readDataToEndOfFile()
-            let diagnostics = String(data: diagnosticsData, encoding: .utf8) ?? ""
-            guard process.terminationStatus == 0 else {
-                throw MiniCompilerError.unsupportedSyntax("swift-frontend 実行失敗: \(diagnostics)")
-            }
-
-            let ir = try String(contentsOf: out, encoding: .utf8)
-            let lines = diagnostics.split(separator: "\n").map(String.init)
-            return CompileOutput(llvmIR: ir, diagnostics: lines)
+            throw MiniCompilerError.swiftFrontendNotFound
         }
         return linkedResult
     }
 }
 
 private struct SwiftFrontendAdapterBridge {
-    typealias AdapterCompileFn = @convention(c) (
+    typealias AdapterCompileEntryFn = @convention(c) (
         UnsafePointer<CChar>?,
         UnsafePointer<CChar>?,
         UnsafePointer<CChar>?
     ) -> Int32
+    nonisolated(unsafe) static var runtimeCallback: EmbeddedCompileCallback?
 
     func emitIRUsingLinkedAdapter(
         source: String,
         moduleName: String,
         temporaryDirectory: URL
     ) throws -> CompileOutput? {
-        guard let compileFn = resolveCompileFunction() else {
-            return nil
-        }
-
         let outputPath = temporaryDirectory.appendingPathComponent("output.ll")
         applyEmbeddedSDKDefaults()
-
-        let rc = source.withCString { src in
-            moduleName.withCString { mod in
-                outputPath.path.withCString { out in
-                    compileFn(src, mod, out)
+        let rc: Int32
+        if let callback = Self.runtimeCallback {
+            rc = source.withCString { src in
+                moduleName.withCString { mod in
+                    outputPath.path.withCString { out in
+                        callback(src, mod, out, nil, nil)
+                    }
                 }
             }
+        } else if let entryFn = resolveLinkedAdapterEntryFunction() {
+            rc = source.withCString { src in
+                moduleName.withCString { mod in
+                    outputPath.path.withCString { out in
+                        entryFn(src, mod, out)
+                    }
+                }
+            }
+        } else {
+            return nil
         }
 
         guard rc == 0 else {
@@ -178,11 +173,11 @@ private struct SwiftFrontendAdapterBridge {
         return CompileOutput(llvmIR: ir, diagnostics: [])
     }
 
-    private func resolveCompileFunction() -> AdapterCompileFn? {
+    private func resolveLinkedAdapterEntryFunction() -> AdapterCompileEntryFn? {
         guard let symbol = dlsym(nil, "swift_irgen_adapter_compile") else {
             return nil
         }
-        return unsafeBitCast(symbol, to: AdapterCompileFn.self)
+        return unsafeBitCast(symbol, to: AdapterCompileEntryFn.self)
     }
 
     func applyEmbeddedSDKDefaults() {
@@ -195,34 +190,13 @@ private struct SwiftFrontendAdapterBridge {
             return
         }
 
-        if let docsSDK = SwiftFrontendResolver.resolveDocumentsSDKPath() {
+        if let docsSDK = resolveDocumentsSDKPath() {
             _ = setenv("SWIFT_SDK_PATH", docsSDK, 1)
             return
         }
-
-        if let sdk = ProcessInfo.processInfo.environment["SWIFT_SDK"], !sdk.isEmpty,
-           let resolved = SwiftFrontendResolver.resolveSDKPath(sdk: sdk) {
-            _ = setenv("SWIFT_SDK_PATH", resolved, 1)
-        }
-    }
-}
-
-private enum SwiftFrontendResolver {
-    static func resolveFrontendExecutable() -> String? {
-        if let envPath = ProcessInfo.processInfo.environment["SWIFT_FRONTEND_PATH"], !envPath.isEmpty {
-            return envPath
-        }
-        if let fromPATH = runAndReadOutput("/usr/bin/env", ["which", "swift-frontend"]), !fromPATH.isEmpty {
-            return fromPATH
-        }
-        return nil
     }
 
-    static func resolveSDKPath(sdk: String) -> String? {
-        runAndReadOutput("/usr/bin/xcrun", ["--sdk", sdk, "--show-sdk-path"])
-    }
-
-    static func resolveDocumentsSDKPath() -> String? {
+    private func resolveDocumentsSDKPath() -> String? {
         guard let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
             return nil
         }
@@ -231,26 +205,5 @@ private enum SwiftFrontendResolver {
             return nil
         }
         return sdk.path
-    }
-
-    private static func runAndReadOutput(_ executable: String, _ args: [String]) -> String? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = args
-
-        let output = Pipe()
-        process.standardOutput = output
-        process.standardError = Pipe()
-
-        do {
-            try process.run()
-        } catch {
-            return nil
-        }
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else { return nil }
-        let data = output.fileHandleForReading.readDataToEndOfFile()
-        return String(data: data, encoding: .utf8)?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

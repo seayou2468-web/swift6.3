@@ -51,6 +51,15 @@ mkdir -p "$OUT_DIR" "$DIST_DIR" "$LOG_DIR"
 
 run_step "Swift Package tests" bash -lc "cd '$ROOT_DIR' && swift test"
 run_step "Bootstrap minimal toolchain repos" "$ROOT_DIR/Scripts/bootstrap_minimal_toolchain_repos.sh" "$SCHEME" "$TOOLCHAIN_WORKSPACE"
+
+if [[ -z "${SWIFT_FRONTEND_EMBEDDED_LIB_IOS:-}" || -z "${SWIFT_FRONTEND_EMBEDDED_LIB_SIM:-}" ]]; then
+  EMBEDDED_ENV="$LOG_DIR/embedded-frontend.env"
+  run_step "Build embedded frontend stub libs" bash -lc "cd '$ROOT_DIR' && ./Scripts/build_swift_frontend_embedded_stub.sh > '$EMBEDDED_ENV'"
+  # shellcheck disable=SC1090
+  source "$EMBEDDED_ENV"
+  export SWIFT_FRONTEND_EMBEDDED_LIB_IOS SWIFT_FRONTEND_EMBEDDED_LIB_SIM
+fi
+
 run_step "Build unified toolchain xcframework (ordered: llvm/clang -> swift frontend lib -> core -> unified)" "$ROOT_DIR/Scripts/build_unified_toolchain_xcframework.sh" "$SCHEME"
 run_step "Build standalone Swift frontend xcframework" "$ROOT_DIR/Scripts/build_swift_frontend_xcframework.sh"
 if [[ "$ALLOW_RUNTIME_FAILURE" == "1" ]]; then

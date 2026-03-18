@@ -25,6 +25,8 @@ SWIFT_FRONTEND_SIM_INSTALL="$SWIFT_FRONTEND_SIM_BUILD/install"
 SWIFT_FRONTEND_SRC="$WORK_DIR/build/swift-frontend-src"
 OUT_DIR="$ROOT_DIR/Artifacts"
 UNIFIED_OUT="$OUT_DIR/SwiftToolchainKit.xcframework"
+EMBEDDED_IOS_LIB="${SWIFT_FRONTEND_EMBEDDED_LIB_IOS:-}"
+EMBEDDED_SIM_LIB="${SWIFT_FRONTEND_EMBEDDED_LIB_SIM:-}"
 RUNTIME_IOS_LIB=""
 RUNTIME_SIM_LIB=""
 RUNTIME_IOS_HEADERS=""
@@ -39,6 +41,8 @@ require_tool cmake
 require_tool ninja
 require_tool git
 require_tool python3
+require_tool libtool
+require_tool nm
 
 XCODE_VER="$(xcodebuild -version | head -n1 | awk '{print $2}')"
 REQUIRED_XCODE_VER="${REQUIRED_XCODE_VERSION:-26.1.1}"
@@ -80,6 +84,18 @@ if [[ -n "$SWIFT_FRONTEND_HOST" ]]; then
     RUNTIME_IOS_HEADERS="$TOOLCHAIN_ROOT/lib/swift/iphoneos"
     RUNTIME_SIM_HEADERS="$TOOLCHAIN_ROOT/lib/swift/iphonesimulator"
   fi
+fi
+
+if [[ -z "$EMBEDDED_IOS_LIB" || -z "$EMBEDDED_SIM_LIB" ]]; then
+  echo "エラー: 実体同梱が必須です。"
+  echo "SWIFT_FRONTEND_EMBEDDED_LIB_IOS と SWIFT_FRONTEND_EMBEDDED_LIB_SIM を指定してください。"
+  exit 1
+fi
+if [[ ! -f "$EMBEDDED_IOS_LIB" || ! -f "$EMBEDDED_SIM_LIB" ]]; then
+  echo "エラー: 指定された実体ライブラリが見つかりません。"
+  echo "  iOS: $EMBEDDED_IOS_LIB"
+  echo "  Sim: $EMBEDDED_SIM_LIB"
+  exit 1
 fi
 
 rm -rf "$LLVM_IOS_BUILD" "$LLVM_SIM_BUILD" "$SWIFT_FRAMEWORK_BUILD" "$SWIFT_FRONTEND_IOS_BUILD" "$SWIFT_FRONTEND_SIM_BUILD" "$SWIFT_FRONTEND_SRC" "$UNIFIED_OUT"
@@ -166,6 +182,11 @@ cmake -S "$SWIFT_FRONTEND_SRC" -B "$SWIFT_FRONTEND_IOS_BUILD" -G Ninja \
   -DCMAKE_INSTALL_PREFIX="$SWIFT_FRONTEND_IOS_INSTALL"
 cmake --build "$SWIFT_FRONTEND_IOS_BUILD" --target SwiftFrontendAdapter
 cmake --install "$SWIFT_FRONTEND_IOS_BUILD"
+mv "$SWIFT_FRONTEND_IOS_INSTALL/lib/libSwiftFrontend.a" "$SWIFT_FRONTEND_IOS_INSTALL/lib/libSwiftFrontendAdapter.a"
+libtool -static \
+  -o "$SWIFT_FRONTEND_IOS_INSTALL/lib/libSwiftFrontend.a" \
+  "$SWIFT_FRONTEND_IOS_INSTALL/lib/libSwiftFrontendAdapter.a" \
+  "$EMBEDDED_IOS_LIB"
 
 cmake -S "$SWIFT_FRONTEND_SRC" -B "$SWIFT_FRONTEND_SIM_BUILD" -G Ninja \
   -DCMAKE_SYSTEM_NAME=iOS \
@@ -176,6 +197,18 @@ cmake -S "$SWIFT_FRONTEND_SRC" -B "$SWIFT_FRONTEND_SIM_BUILD" -G Ninja \
   -DCMAKE_INSTALL_PREFIX="$SWIFT_FRONTEND_SIM_INSTALL"
 cmake --build "$SWIFT_FRONTEND_SIM_BUILD" --target SwiftFrontendAdapter
 cmake --install "$SWIFT_FRONTEND_SIM_BUILD"
+mv "$SWIFT_FRONTEND_SIM_INSTALL/lib/libSwiftFrontend.a" "$SWIFT_FRONTEND_SIM_INSTALL/lib/libSwiftFrontendAdapter.a"
+libtool -static \
+  -o "$SWIFT_FRONTEND_SIM_INSTALL/lib/libSwiftFrontend.a" \
+  "$SWIFT_FRONTEND_SIM_INSTALL/lib/libSwiftFrontendAdapter.a" \
+  "$EMBEDDED_SIM_LIB"
+
+for lib in "$SWIFT_FRONTEND_IOS_INSTALL/lib/libSwiftFrontend.a" "$SWIFT_FRONTEND_SIM_INSTALL/lib/libSwiftFrontend.a"; do
+  if ! nm -gU "$lib" 2>/dev/null | grep -q "swift_frontend_embedded_compile"; then
+    echo "エラー: $lib に swift_frontend_embedded_compile が含まれていません。"
+    exit 1
+  fi
+done
 
 echo "[3/4] Build MiniSwiftCompilerCore framework"
 xcodebuild archive \
