@@ -19,6 +19,10 @@ SWIFT_FRAMEWORK_BUILD="$WORK_DIR/build/swift-compiler-framework"
 SWIFT_FRONTEND_IOS_BUILD="$WORK_DIR/build/swift-frontend-ios-arm64"
 SWIFT_FRONTEND_IOS_INSTALL="$SWIFT_FRONTEND_IOS_BUILD/install"
 SWIFT_FRONTEND_SRC="$WORK_DIR/build/swift-frontend-src"
+LLVM_PACKAGE_DIR="$WORK_DIR/build/llvm-package-ios"
+LLVM_COMBINED_ARCHIVE="$LLVM_PACKAGE_DIR/llvm.a"
+LLVM_HEADERS_DIR="$LLVM_PACKAGE_DIR/llvm-headers"
+CLANG_HEADERS_DIR="$LLVM_PACKAGE_DIR/clang-headers"
 OUT_DIR="$ROOT_DIR/Artifacts"
 UNIFIED_OUT="$OUT_DIR/SwiftToolchainKit.xcframework"
 EMBEDDED_IOS_LIB="${SWIFT_FRONTEND_EMBEDDED_LIB_IOS:-}"
@@ -27,6 +31,7 @@ RUNTIME_IOS_LIB=""
 RUNTIME_IOS_HEADERS=""
 APPLE_ARCH="${APPLE_ARCH:-arm64}"
 LLVM_ARCH="${LLVM_ARCH:-AArch64}"
+APPLE_LINKER_CMAKE_FLAGS=()
 
 require_tool() {
   command -v "$1" >/dev/null 2>&1 || { echo "必要ツール不足: $1"; exit 1; }
@@ -44,7 +49,6 @@ require_tool nm
 # inject it through LDFLAGS/CMAKE_*_LINKER_FLAGS, so strip it and switch to the
 # Darwin equivalent when configuring iOS builds.
 append_apple_linker_cmake_flags() {
-  local -n _out_ref=$1
   local combined_flags="${LDFLAGS:-} ${CMAKE_EXE_LINKER_FLAGS:-} ${CMAKE_SHARED_LINKER_FLAGS:-} ${CMAKE_MODULE_LINKER_FLAGS:-}"
 
   combined_flags=" ${combined_flags} "
@@ -56,11 +60,49 @@ append_apple_linker_cmake_flags() {
     combined_flags="${combined_flags:+$combined_flags }-Wl,-dead_strip"
   fi
 
-  _out_ref+=(
+  APPLE_LINKER_CMAKE_FLAGS=(
     "-DCMAKE_EXE_LINKER_FLAGS=${combined_flags}"
     "-DCMAKE_SHARED_LINKER_FLAGS=${combined_flags}"
     "-DCMAKE_MODULE_LINKER_FLAGS=${combined_flags}"
   )
+}
+
+prepare_llvm_package_artifacts() {
+  local install_prefix="$1"
+  local package_dir="$2"
+  local archive_path="$3"
+  local llvm_headers_dir="$4"
+  local clang_headers_dir="$5"
+  local clang_dylib="$install_prefix/lib/libclang.dylib"
+  local -a llvm_inputs=()
+
+  shopt -s nullglob
+  llvm_inputs=(
+    "$install_prefix"/lib/libLLVM*.a
+    "$install_prefix"/lib/libclang*.a
+    "$install_prefix"/lib/liblld*.a
+  )
+  shopt -u nullglob
+
+  if [[ ${#llvm_inputs[@]} -eq 0 ]]; then
+    echo "エラー: LLVM/Clang/LLD static library が見つかりません: $install_prefix/lib"
+    exit 1
+  fi
+  if [[ ! -f "$clang_dylib" ]]; then
+    echo "エラー: libclang.dylib が見つかりません: $clang_dylib"
+    exit 1
+  fi
+  if [[ ! -d "$install_prefix/include/clang-c" ]]; then
+    echo "エラー: clang-c headers が見つかりません: $install_prefix/include/clang-c"
+    exit 1
+  fi
+
+  rm -rf "$package_dir"
+  mkdir -p "$llvm_headers_dir" "$clang_headers_dir"
+  libtool -static -o "$archive_path" "${llvm_inputs[@]}"
+  cp -R "$install_prefix/include/." "$llvm_headers_dir/"
+  rm -rf "$llvm_headers_dir/clang-c"
+  cp -R "$install_prefix/include/clang-c/." "$clang_headers_dir/"
 }
 
 build_llvm_clang_libraries() {
@@ -74,6 +116,9 @@ build_llvm_clang_libraries() {
   if printf '%s\n' "$target_list" | grep -qx 'clang-resource-headers'; then
     bootstrap_targets+=(clang-resource-headers)
   fi
+  if printf '%s\n' "$target_list" | grep -qx 'clang-headers'; then
+    bootstrap_targets+=(clang-headers)
+  fi
   if [[ ${#bootstrap_targets[@]} -gt 0 ]]; then
     echo "Prebuild bootstrap targets: ${bootstrap_targets[*]}"
     cmake --build "$build_dir" --target "${bootstrap_targets[@]}"
@@ -81,6 +126,7 @@ build_llvm_clang_libraries() {
 
   local -a llvm_candidates=(llvm-libraries lib/all all)
   local -a clang_candidates=(clang-libraries clang-cpp clang "")
+  local -a lld_candidates=(lld "")
   local -a build_args=()
   local tried=0
 
@@ -97,18 +143,27 @@ build_llvm_clang_libraries() {
         continue
       fi
 
-      build_args=(--target "$llvm_t")
-      if [[ -n "$clang_t" ]]; then
-        build_args+=("$clang_t")
-      fi
+      for lld_t in "${lld_candidates[@]}"; do
+        if [[ -n "$lld_t" ]] && ! printf '%s\n' "$target_list" | grep -qx "$lld_t"; then
+          continue
+        fi
 
-      tried=$((tried+1))
-      echo "LLVM/Clang build attempt #$tried: ${build_args[*]}"
-      if cmake --build "$build_dir" "${build_args[@]}"; then
-        return 0
-      fi
+        build_args=(--target "$llvm_t")
+        if [[ -n "$clang_t" ]]; then
+          build_args+=("$clang_t")
+        fi
+        if [[ -n "$lld_t" ]]; then
+          build_args+=("$lld_t")
+        fi
 
-      echo "WARN: build attempt failed. trying next fallback targets..."
+        tried=$((tried+1))
+        echo "LLVM/Clang/LLD build attempt #$tried: ${build_args[*]}"
+        if cmake --build "$build_dir" "${build_args[@]}"; then
+          return 0
+        fi
+
+        echo "WARN: build attempt failed. trying next fallback targets..."
+      done
     done
   done
 
@@ -168,12 +223,11 @@ if [[ ! -f "$EMBEDDED_IOS_LIB" ]]; then
   echo "  iOS: $EMBEDDED_IOS_LIB"
   exit 1
 fi
-rm -rf "$LLVM_IOS_BUILD" "$SWIFT_FRAMEWORK_BUILD" "$SWIFT_FRONTEND_IOS_BUILD" "$SWIFT_FRONTEND_SRC" "$UNIFIED_OUT"
+rm -rf "$LLVM_IOS_BUILD" "$SWIFT_FRAMEWORK_BUILD" "$SWIFT_FRONTEND_IOS_BUILD" "$SWIFT_FRONTEND_SRC" "$LLVM_PACKAGE_DIR" "$UNIFIED_OUT"
 mkdir -p "$LLVM_IOS_BUILD" "$SWIFT_FRAMEWORK_BUILD" "$SWIFT_FRONTEND_IOS_BUILD" "$SWIFT_FRONTEND_SRC"
 
 echo "[1/4] Build LLVM/Clang for iOS arm64"
-declare -a llvm_ios_cmake_args=()
-append_apple_linker_cmake_flags llvm_ios_cmake_args
+append_apple_linker_cmake_flags
 cmake -S "$LLVM_SRC_DIR/llvm" -B "$LLVM_IOS_BUILD" -G Ninja \
   -DLLVM_ENABLE_PROJECTS="clang;lld" \
   -DCMAKE_SYSTEM_NAME=iOS \
@@ -209,9 +263,15 @@ cmake -S "$LLVM_SRC_DIR/llvm" -B "$LLVM_IOS_BUILD" -G Ninja \
   -DLLVM_ENABLE_LIBXML2=OFF \
   -DLLVM_INCLUDE_TESTS=OFF \
   -DLLVM_INCLUDE_BENCHMARKS=OFF \
-  "${llvm_ios_cmake_args[@]}"
+  "${APPLE_LINKER_CMAKE_FLAGS[@]}"
 build_llvm_clang_libraries "$LLVM_IOS_BUILD"
 cmake --install "$LLVM_IOS_BUILD"
+prepare_llvm_package_artifacts \
+  "$LLVM_IOS_INSTALL" \
+  "$LLVM_PACKAGE_DIR" \
+  "$LLVM_COMBINED_ARCHIVE" \
+  "$LLVM_HEADERS_DIR" \
+  "$CLANG_HEADERS_DIR"
 
 
 
@@ -268,8 +328,8 @@ XC_ARGS=(
   -create-xcframework
   -framework "$SWIFT_FRAMEWORK_BUILD/ios.xcarchive/Products/Library/Frameworks/MiniSwiftCompilerCore.framework"
   -library "$SWIFT_FRONTEND_IOS_INSTALL/lib/libSwiftFrontend.a" -headers "$SWIFT_FRONTEND_IOS_INSTALL/include"
-  -library "$LLVM_IOS_INSTALL/lib/libLLVM.a" -headers "$LLVM_IOS_INSTALL/include"
-  -library "$LLVM_IOS_INSTALL/lib/libclang-cpp.a" -headers "$LLVM_IOS_INSTALL/include"
+  -library "$LLVM_COMBINED_ARCHIVE" -headers "$LLVM_HEADERS_DIR"
+  -library "$LLVM_IOS_INSTALL/lib/libclang.dylib" -headers "$CLANG_HEADERS_DIR"
 )
 if [[ -n "$SILOPT_IOS_LIB" ]]; then
   if [[ ! -f "$SILOPT_IOS_LIB" ]]; then

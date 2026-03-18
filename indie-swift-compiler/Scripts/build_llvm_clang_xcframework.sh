@@ -17,6 +17,8 @@ IOS_BUILD="$BUILD_ROOT/ios"
 SIM_BUILD="$BUILD_ROOT/ios-sim"
 IOS_PREFIX="$IOS_BUILD/install"
 SIM_PREFIX="$SIM_BUILD/install"
+IOS_PACKAGE_DIR="$IOS_BUILD/package"
+SIM_PACKAGE_DIR="$SIM_BUILD/package"
 
 rm -rf "$BUILD_ROOT"
 mkdir -p "$IOS_BUILD" "$OUT_DIR"
@@ -35,6 +37,9 @@ build_llvm_clang_libraries() {
   if printf '%s\n' "$target_list" | grep -qx 'clang-resource-headers'; then
     bootstrap_targets+=(clang-resource-headers)
   fi
+  if printf '%s\n' "$target_list" | grep -qx 'clang-headers'; then
+    bootstrap_targets+=(clang-headers)
+  fi
   if [[ ${#bootstrap_targets[@]} -gt 0 ]]; then
     echo "Prebuild bootstrap targets: ${bootstrap_targets[*]}"
     cmake --build "$build_dir" --target "${bootstrap_targets[@]}"
@@ -42,6 +47,7 @@ build_llvm_clang_libraries() {
 
   local -a llvm_candidates=(llvm-libraries lib/all all)
   local -a clang_candidates=(clang-libraries clang-cpp clang "")
+  local -a lld_candidates=(lld "")
   local -a build_args=()
   local tried=0
 
@@ -58,18 +64,27 @@ build_llvm_clang_libraries() {
         continue
       fi
 
-      build_args=(--target "$llvm_t")
-      if [[ -n "$clang_t" ]]; then
-        build_args+=("$clang_t")
-      fi
+      for lld_t in "${lld_candidates[@]}"; do
+        if [[ -n "$lld_t" ]] && ! printf '%s\n' "$target_list" | grep -qx "$lld_t"; then
+          continue
+        fi
 
-      tried=$((tried+1))
-      echo "LLVM/Clang build attempt #$tried: ${build_args[*]}"
-      if cmake --build "$build_dir" "${build_args[@]}"; then
-        return 0
-      fi
+        build_args=(--target "$llvm_t")
+        if [[ -n "$clang_t" ]]; then
+          build_args+=("$clang_t")
+        fi
+        if [[ -n "$lld_t" ]]; then
+          build_args+=("$lld_t")
+        fi
 
-      echo "WARN: build attempt failed. trying next fallback targets..."
+        tried=$((tried+1))
+        echo "LLVM/Clang/LLD build attempt #$tried: ${build_args[*]}"
+        if cmake --build "$build_dir" "${build_args[@]}"; then
+          return 0
+        fi
+
+        echo "WARN: build attempt failed. trying next fallback targets..."
+      done
     done
   done
 
@@ -77,9 +92,47 @@ build_llvm_clang_libraries() {
   cmake --build "$build_dir"
 }
 
+prepare_llvm_package_artifacts() {
+  local install_prefix="$1"
+  local package_dir="$2"
+  local archive_path="$3"
+  local llvm_headers_dir="$4"
+  local clang_headers_dir="$5"
+  local clang_dylib="$install_prefix/lib/libclang.dylib"
+  local -a llvm_inputs=()
+
+  shopt -s nullglob
+  llvm_inputs=(
+    "$install_prefix"/lib/libLLVM*.a
+    "$install_prefix"/lib/libclang*.a
+    "$install_prefix"/lib/liblld*.a
+  )
+  shopt -u nullglob
+
+  if [[ ${#llvm_inputs[@]} -eq 0 ]]; then
+    echo "エラー: LLVM/Clang/LLD static library が見つかりません: $install_prefix/lib"
+    exit 1
+  fi
+  if [[ ! -f "$clang_dylib" ]]; then
+    echo "エラー: libclang.dylib が見つかりません: $clang_dylib"
+    exit 1
+  fi
+  if [[ ! -d "$install_prefix/include/clang-c" ]]; then
+    echo "エラー: clang-c headers が見つかりません: $install_prefix/include/clang-c"
+    exit 1
+  fi
+
+  rm -rf "$package_dir"
+  mkdir -p "$llvm_headers_dir" "$clang_headers_dir"
+  libtool -static -o "$archive_path" "${llvm_inputs[@]}"
+  cp -R "$install_prefix/include/." "$llvm_headers_dir/"
+  rm -rf "$llvm_headers_dir/clang-c"
+  cp -R "$install_prefix/include/clang-c/." "$clang_headers_dir/"
+}
+
 # iOS Device
 cmake -S "$LLVM_PROJECT/llvm" -B "$IOS_BUILD" -G Ninja \
-  -DLLVM_ENABLE_PROJECTS="clang" \
+  -DLLVM_ENABLE_PROJECTS="clang;lld" \
   -DCMAKE_SYSTEM_NAME=iOS \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
@@ -114,11 +167,17 @@ cmake -S "$LLVM_PROJECT/llvm" -B "$IOS_BUILD" -G Ninja \
 
 build_llvm_clang_libraries "$IOS_BUILD"
 cmake --install "$IOS_BUILD"
+prepare_llvm_package_artifacts \
+  "$IOS_PREFIX" \
+  "$IOS_PACKAGE_DIR" \
+  "$IOS_PACKAGE_DIR/llvm.a" \
+  "$IOS_PACKAGE_DIR/llvm-headers" \
+  "$IOS_PACKAGE_DIR/clang-headers"
 
 if [[ "$IOS_DEVICE_ONLY" != "1" ]]; then
   # iOS Simulator
   cmake -S "$LLVM_PROJECT/llvm" -B "$SIM_BUILD" -G Ninja \
-    -DLLVM_ENABLE_PROJECTS="clang" \
+    -DLLVM_ENABLE_PROJECTS="clang;lld" \
     -DCMAKE_SYSTEM_NAME=iOS \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
@@ -153,19 +212,25 @@ if [[ "$IOS_DEVICE_ONLY" != "1" ]]; then
 
   build_llvm_clang_libraries "$SIM_BUILD"
   cmake --install "$SIM_BUILD"
+  prepare_llvm_package_artifacts \
+    "$SIM_PREFIX" \
+    "$SIM_PACKAGE_DIR" \
+    "$SIM_PACKAGE_DIR/llvm.a" \
+    "$SIM_PACKAGE_DIR/llvm-headers" \
+    "$SIM_PACKAGE_DIR/clang-headers"
 fi
 
 LLVM_XC_ARGS=(
   -create-xcframework
-  -library "$IOS_PREFIX/lib/libLLVM.a" -headers "$IOS_PREFIX/include"
+  -library "$IOS_PACKAGE_DIR/llvm.a" -headers "$IOS_PACKAGE_DIR/llvm-headers"
 )
 CLANG_XC_ARGS=(
   -create-xcframework
-  -library "$IOS_PREFIX/lib/libclang-cpp.a" -headers "$IOS_PREFIX/include"
+  -library "$IOS_PREFIX/lib/libclang.dylib" -headers "$IOS_PACKAGE_DIR/clang-headers"
 )
 if [[ "$IOS_DEVICE_ONLY" != "1" ]]; then
-  LLVM_XC_ARGS+=( -library "$SIM_PREFIX/lib/libLLVM.a" -headers "$SIM_PREFIX/include" )
-  CLANG_XC_ARGS+=( -library "$SIM_PREFIX/lib/libclang-cpp.a" -headers "$SIM_PREFIX/include" )
+  LLVM_XC_ARGS+=( -library "$SIM_PACKAGE_DIR/llvm.a" -headers "$SIM_PACKAGE_DIR/llvm-headers" )
+  CLANG_XC_ARGS+=( -library "$SIM_PREFIX/lib/libclang.dylib" -headers "$SIM_PACKAGE_DIR/clang-headers" )
 fi
 LLVM_XC_ARGS+=( -output "$OUT_DIR/LLVM.xcframework" )
 CLANG_XC_ARGS+=( -output "$OUT_DIR/Clang.xcframework" )
