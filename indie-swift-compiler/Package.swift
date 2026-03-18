@@ -14,15 +14,11 @@ let package = Package(
             targets: ["MiniSwiftCompilerCore"]
         )
     ],
-    dependencies: [
-        .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "602.0.0")
-    ],
+    dependencies: [],
     targets: [
         .target(
             name: "MiniSwiftCompilerCore",
-            dependencies: [
-                .product(name: "SwiftParser", package: "swift-syntax")
-            ]
+            dependencies: []
         ),
         .testTarget(
             name: "MiniSwiftCompilerCoreTests",

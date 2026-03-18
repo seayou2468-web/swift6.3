@@ -3,7 +3,7 @@
   "goal": "Swift言語互換性を優先しつつ、余分な機能を削って依存とビルド負荷を最小化する",
   "backend": {
     "primary": "swift-frontend",
-    "fallback": "lightweight-swiftsyntax"
+    "fallback": "none"
   },
   "enable": [
     "swift",

@@ -24,8 +24,5 @@
 
 ## このリポジトリでの位置づけ
 
-- `MiniCompiler` は
-  - `lightweight`（軽量/限定）
-  - `swiftFrontend`（互換優先）
-  の2経路を持つ。
+- `MiniCompiler` は `swiftFrontend`（互換優先）経路を持つ。
 - `compatibility-profile.json` で依存/機能削減ポリシーを管理する。
