@@ -46,6 +46,32 @@ require_tool python3
 require_tool libtool
 require_tool nm
 
+build_llvm_clang_libraries() {
+  local build_dir="$1"
+  local -a targets=()
+  local target_list
+  target_list="$(ninja -C "$build_dir" -t targets all 2>/dev/null | awk '{print $1}')"
+
+  if printf '%s\n' "$target_list" | grep -qx 'llvm-libraries'; then
+    targets+=(llvm-libraries)
+  elif printf '%s\n' "$target_list" | grep -qx 'lib/all'; then
+    targets+=(lib/all)
+  else
+    targets+=(all)
+  fi
+
+  if printf '%s\n' "$target_list" | grep -qx 'clang-libraries'; then
+    targets+=(clang-libraries)
+  elif printf '%s\n' "$target_list" | grep -qx 'clang-cpp'; then
+    targets+=(clang-cpp)
+  elif printf '%s\n' "$target_list" | grep -qx 'clang'; then
+    targets+=(clang)
+  fi
+
+  echo "LLVM/Clang build targets: ${targets[*]}"
+  cmake --build "$build_dir" --target "${targets[@]}"
+}
+
 XCODE_VERSION_OUTPUT="$(xcodebuild -version 2>/dev/null || true)"
 XCODE_VER="$(printf '%s\n' "$XCODE_VERSION_OUTPUT" | awk 'NR==1 { print $2 }')"
 REQUIRED_XCODE_VER="${REQUIRED_XCODE_VERSION:-26.1.1}"
@@ -128,7 +154,7 @@ cmake -S "$LLVM_SRC_DIR/llvm" -B "$LLVM_IOS_BUILD" -G Ninja \
   -DLLVM_ENABLE_LIBXML2=OFF \
   -DLLVM_INCLUDE_TESTS=OFF \
   -DLLVM_INCLUDE_BENCHMARKS=OFF
-cmake --build "$LLVM_IOS_BUILD" --target llvm-libraries clang-libraries
+build_llvm_clang_libraries "$LLVM_IOS_BUILD"
 cmake --install "$LLVM_IOS_BUILD"
 
 echo "[1/4] Build LLVM/Clang for iOS Simulator arm64"
@@ -155,7 +181,7 @@ cmake -S "$LLVM_SRC_DIR/llvm" -B "$LLVM_SIM_BUILD" -G Ninja \
   -DLLVM_ENABLE_LIBXML2=OFF \
   -DLLVM_INCLUDE_TESTS=OFF \
   -DLLVM_INCLUDE_BENCHMARKS=OFF
-cmake --build "$LLVM_SIM_BUILD" --target llvm-libraries clang-libraries
+build_llvm_clang_libraries "$LLVM_SIM_BUILD"
 cmake --install "$LLVM_SIM_BUILD"
 
 echo "[2/4] Build swift-frontend adapter static library"

@@ -20,6 +20,32 @@ SIM_PREFIX="$SIM_BUILD/install"
 rm -rf "$BUILD_ROOT"
 mkdir -p "$IOS_BUILD" "$SIM_BUILD" "$OUT_DIR"
 
+build_llvm_clang_libraries() {
+  local build_dir="$1"
+  local -a targets=()
+  local target_list
+  target_list="$(ninja -C "$build_dir" -t targets all 2>/dev/null | awk '{print $1}')"
+
+  if printf '%s\n' "$target_list" | grep -qx 'llvm-libraries'; then
+    targets+=(llvm-libraries)
+  elif printf '%s\n' "$target_list" | grep -qx 'lib/all'; then
+    targets+=(lib/all)
+  else
+    targets+=(all)
+  fi
+
+  if printf '%s\n' "$target_list" | grep -qx 'clang-libraries'; then
+    targets+=(clang-libraries)
+  elif printf '%s\n' "$target_list" | grep -qx 'clang-cpp'; then
+    targets+=(clang-cpp)
+  elif printf '%s\n' "$target_list" | grep -qx 'clang'; then
+    targets+=(clang)
+  fi
+
+  echo "LLVM/Clang build targets: ${targets[*]}"
+  cmake --build "$build_dir" --target "${targets[@]}"
+}
+
 # iOS Device
 cmake -S "$LLVM_PROJECT/llvm" -B "$IOS_BUILD" -G Ninja \
   -DLLVM_ENABLE_PROJECTS="clang" \
@@ -44,7 +70,7 @@ cmake -S "$LLVM_PROJECT/llvm" -B "$IOS_BUILD" -G Ninja \
   -DLLVM_INCLUDE_TESTS=OFF \
   -DLLVM_INCLUDE_BENCHMARKS=OFF
 
-cmake --build "$IOS_BUILD" --target llvm-libraries clang-libraries
+build_llvm_clang_libraries "$IOS_BUILD"
 cmake --install "$IOS_BUILD"
 
 # iOS Simulator
@@ -72,7 +98,7 @@ cmake -S "$LLVM_PROJECT/llvm" -B "$SIM_BUILD" -G Ninja \
   -DLLVM_INCLUDE_TESTS=OFF \
   -DLLVM_INCLUDE_BENCHMARKS=OFF
 
-cmake --build "$SIM_BUILD" --target llvm-libraries clang-libraries
+build_llvm_clang_libraries "$SIM_BUILD"
 cmake --install "$SIM_BUILD"
 
 xcodebuild -create-xcframework \

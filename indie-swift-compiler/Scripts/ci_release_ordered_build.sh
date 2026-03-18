@@ -73,6 +73,8 @@ else
 fi
 
 if [[ "$DRY_RUN" != "1" ]]; then
+  run_step "Verify iOS embedding readiness (frontend/runtime)" "$ROOT_DIR/Scripts/verify_ios_embedding_readiness.sh" "$OUT_DIR"
+
   require_path "$OUT_DIR/SwiftToolchainKit.xcframework"
   require_path "$OUT_DIR/SwiftFrontend.xcframework"
 
