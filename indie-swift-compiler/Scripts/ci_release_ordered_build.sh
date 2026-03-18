@@ -9,6 +9,7 @@ DIST_DIR="$ROOT_DIR/Dist"
 LOG_DIR="$DIST_DIR/logs"
 DRY_RUN="${CI_DRY_RUN:-0}"
 ALLOW_RUNTIME_FAILURE="${ALLOW_RUNTIME_FAILURE:-1}"
+VERIFY_IOS_EMBEDDING_STRICT="${VERIFY_IOS_EMBEDDING_STRICT:-0}"
 BUILD_ID="${BUILD_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
 export NSUnbufferedIO="${NSUnbufferedIO:-YES}"
 
@@ -63,6 +64,7 @@ if [[ -z "${SWIFT_FRONTEND_EMBEDDED_LIB_IOS:-}" || -z "${SWIFT_FRONTEND_EMBEDDED
 fi
 
 run_step "Build unified toolchain xcframework (ordered: llvm/clang -> swift frontend lib -> core -> unified)" "$ROOT_DIR/Scripts/build_unified_toolchain_xcframework.sh" "$SCHEME"
+run_step "Build standalone compiler-rt xcframework" "$ROOT_DIR/Scripts/build_compiler_rt_xcframework.sh" "$SCHEME"
 run_step "Build standalone Swift frontend xcframework" "$ROOT_DIR/Scripts/build_swift_frontend_xcframework.sh"
 if [[ "$ALLOW_RUNTIME_FAILURE" == "1" ]]; then
   if ! run_step "Build standalone Swift runtime xcframework optional" "$ROOT_DIR/Scripts/build_swift_runtime_xcframework.sh"; then
@@ -73,6 +75,8 @@ else
 fi
 
 if [[ "$DRY_RUN" != "1" ]]; then
+  run_step "Verify iOS embedding readiness (frontend/runtime)" env VERIFY_IOS_EMBEDDING_STRICT="$VERIFY_IOS_EMBEDDING_STRICT" "$ROOT_DIR/Scripts/verify_ios_embedding_readiness.sh" "$OUT_DIR"
+
   require_path "$OUT_DIR/SwiftToolchainKit.xcframework"
   require_path "$OUT_DIR/SwiftFrontend.xcframework"
 

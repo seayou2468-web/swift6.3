@@ -33,6 +33,7 @@ RUNTIME_IOS_LIB=""
 RUNTIME_SIM_LIB=""
 RUNTIME_IOS_HEADERS=""
 RUNTIME_SIM_HEADERS=""
+IOS_DEVICE_ONLY="${IOS_DEVICE_ONLY:-1}"
 
 require_tool() {
   command -v "$1" >/dev/null 2>&1 || { echo "必要ツール不足: $1"; exit 1; }
@@ -45,6 +46,60 @@ require_tool git
 require_tool python3
 require_tool libtool
 require_tool nm
+
+build_llvm_clang_libraries() {
+  local build_dir="$1"
+  local target_list
+  target_list="$(ninja -C "$build_dir" -t targets all 2>/dev/null | awk '{print $1}')"
+  local -a bootstrap_targets=()
+  if printf '%s\n' "$target_list" | grep -qx 'llvm-config'; then
+    bootstrap_targets+=(llvm-config)
+  fi
+  if printf '%s\n' "$target_list" | grep -qx 'clang-resource-headers'; then
+    bootstrap_targets+=(clang-resource-headers)
+  fi
+  if [[ ${#bootstrap_targets[@]} -gt 0 ]]; then
+    echo "Prebuild bootstrap targets: ${bootstrap_targets[*]}"
+    cmake --build "$build_dir" --target "${bootstrap_targets[@]}"
+  fi
+
+  local -a llvm_candidates=(llvm-libraries lib/all all)
+  local -a clang_candidates=(clang-libraries clang-cpp clang "")
+  local -a build_args=()
+  local tried=0
+
+  for llvm_t in "${llvm_candidates[@]}"; do
+    if [[ "$llvm_t" != "all" ]] && ! printf '%s\n' "$target_list" | grep -qx "$llvm_t"; then
+      continue
+    fi
+
+    for clang_t in "${clang_candidates[@]}"; do
+      if [[ -n "$clang_t" ]] && [[ "$clang_t" != "clang" ]] && ! printf '%s\n' "$target_list" | grep -qx "$clang_t"; then
+        continue
+      fi
+      if [[ "$clang_t" == "clang" ]] && ! printf '%s\n' "$target_list" | grep -qx 'clang'; then
+        continue
+      fi
+
+      build_args=(--target "$llvm_t")
+      if [[ -n "$clang_t" ]]; then
+        build_args+=("$clang_t")
+      fi
+
+      tried=$((tried+1))
+      echo "LLVM/Clang build attempt #$tried: ${build_args[*]}"
+      if cmake --build "$build_dir" "${build_args[@]}"; then
+        return 0
+      fi
+
+      echo "WARN: build attempt failed. trying next fallback targets..."
+    done
+  done
+
+  echo "WARN: no target combination succeeded, fallback to plain 'cmake --build'"
+  cmake --build "$build_dir"
+}
+
 
 XCODE_VERSION_OUTPUT="$(xcodebuild -version 2>/dev/null || true)"
 XCODE_VER="$(printf '%s\n' "$XCODE_VERSION_OUTPUT" | awk 'NR==1 { print $2 }')"
@@ -81,28 +136,38 @@ fi
 SWIFT_FRONTEND_HOST="$(xcrun --find swift-frontend 2>/dev/null || true)"
 if [[ -n "$SWIFT_FRONTEND_HOST" ]]; then
   TOOLCHAIN_ROOT="$(cd "$(dirname "$SWIFT_FRONTEND_HOST")/.." && pwd)"
-  if [[ -f "$TOOLCHAIN_ROOT/lib/swift/iphoneos/libswiftCore.a" && -f "$TOOLCHAIN_ROOT/lib/swift/iphonesimulator/libswiftCore.a" ]]; then
+  if [[ -f "$TOOLCHAIN_ROOT/lib/swift/iphoneos/libswiftCore.a" ]]; then
     RUNTIME_IOS_LIB="$TOOLCHAIN_ROOT/lib/swift/iphoneos/libswiftCore.a"
-    RUNTIME_SIM_LIB="$TOOLCHAIN_ROOT/lib/swift/iphonesimulator/libswiftCore.a"
     RUNTIME_IOS_HEADERS="$TOOLCHAIN_ROOT/lib/swift/iphoneos"
+  fi
+  if [[ "$IOS_DEVICE_ONLY" != "1" ]] && [[ -f "$TOOLCHAIN_ROOT/lib/swift/iphonesimulator/libswiftCore.a" ]]; then
+    RUNTIME_SIM_LIB="$TOOLCHAIN_ROOT/lib/swift/iphonesimulator/libswiftCore.a"
     RUNTIME_SIM_HEADERS="$TOOLCHAIN_ROOT/lib/swift/iphonesimulator"
   fi
 fi
 
-if [[ -z "$EMBEDDED_IOS_LIB" || -z "$EMBEDDED_SIM_LIB" ]]; then
-  echo "エラー: 実体同梱が必須です。"
-  echo "SWIFT_FRONTEND_EMBEDDED_LIB_IOS と SWIFT_FRONTEND_EMBEDDED_LIB_SIM を指定してください。"
+if [[ -z "$EMBEDDED_IOS_LIB" ]]; then
+  echo "エラー: 実機向け実体同梱が必須です。"
+  echo "SWIFT_FRONTEND_EMBEDDED_LIB_IOS を指定してください。"
   exit 1
 fi
-if [[ ! -f "$EMBEDDED_IOS_LIB" || ! -f "$EMBEDDED_SIM_LIB" ]]; then
-  echo "エラー: 指定された実体ライブラリが見つかりません。"
+if [[ ! -f "$EMBEDDED_IOS_LIB" ]]; then
+  echo "エラー: 指定された iOS 実機向け実体ライブラリが見つかりません。"
   echo "  iOS: $EMBEDDED_IOS_LIB"
-  echo "  Sim: $EMBEDDED_SIM_LIB"
   exit 1
+fi
+if [[ "$IOS_DEVICE_ONLY" != "1" ]]; then
+  if [[ -z "$EMBEDDED_SIM_LIB" || ! -f "$EMBEDDED_SIM_LIB" ]]; then
+    echo "エラー: iOS Simulator 向けには SWIFT_FRONTEND_EMBEDDED_LIB_SIM が必要です。"
+    exit 1
+  fi
 fi
 
 rm -rf "$LLVM_IOS_BUILD" "$LLVM_SIM_BUILD" "$SWIFT_FRAMEWORK_BUILD" "$SWIFT_FRONTEND_IOS_BUILD" "$SWIFT_FRONTEND_SIM_BUILD" "$SWIFT_FRONTEND_SRC" "$UNIFIED_OUT"
-mkdir -p "$LLVM_IOS_BUILD" "$LLVM_SIM_BUILD" "$SWIFT_FRAMEWORK_BUILD" "$SWIFT_FRONTEND_IOS_BUILD" "$SWIFT_FRONTEND_SIM_BUILD" "$SWIFT_FRONTEND_SRC"
+mkdir -p "$LLVM_IOS_BUILD" "$SWIFT_FRAMEWORK_BUILD" "$SWIFT_FRONTEND_IOS_BUILD" "$SWIFT_FRONTEND_SRC"
+if [[ "$IOS_DEVICE_ONLY" != "1" ]]; then
+  mkdir -p "$LLVM_SIM_BUILD" "$SWIFT_FRONTEND_SIM_BUILD"
+fi
 
 echo "[1/4] Build LLVM/Clang for iOS arm64"
 cmake -S "$LLVM_SRC_DIR/llvm" -B "$LLVM_IOS_BUILD" -G Ninja \
@@ -113,6 +178,16 @@ cmake -S "$LLVM_SRC_DIR/llvm" -B "$LLVM_IOS_BUILD" -G Ninja \
   -DCMAKE_OSX_ARCHITECTURES=arm64 \
   -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
   -DCMAKE_INSTALL_PREFIX="$LLVM_IOS_INSTALL" \
+  -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
+  -DLLVM_TARGETS_TO_BUILD="AArch64;ARM;X86" \
+  -DCOMPILER_RT_ENABLE_IOS=FALSE \
+  -DCOMPILER_RT_ENABLE_WATCHOS=FALSE \
+  -DCOMPILER_RT_ENABLE_TVOS=FALSE \
+  -DCOMPILER_RT_ENABLE_XROS=FALSE \
+  -DCLANG_INCLUDE_TESTS=OFF \
+    -DCLANG_BUILD_TOOLS=OFF \
+  -DLLVM_INCLUDE_DOCS=OFF \
+  -DLLVM_INCLUDE_EXAMPLES=OFF \
   -DLLVM_BUILD_TOOLS=OFF \
   -DLLVM_BUILD_UTILS=OFF \
   -DLLVM_INCLUDE_TOOLS=OFF \
@@ -128,35 +203,47 @@ cmake -S "$LLVM_SRC_DIR/llvm" -B "$LLVM_IOS_BUILD" -G Ninja \
   -DLLVM_ENABLE_LIBXML2=OFF \
   -DLLVM_INCLUDE_TESTS=OFF \
   -DLLVM_INCLUDE_BENCHMARKS=OFF
-cmake --build "$LLVM_IOS_BUILD" --target llvm-libraries clang-libraries
+build_llvm_clang_libraries "$LLVM_IOS_BUILD"
 cmake --install "$LLVM_IOS_BUILD"
 
-echo "[1/4] Build LLVM/Clang for iOS Simulator arm64"
-cmake -S "$LLVM_SRC_DIR/llvm" -B "$LLVM_SIM_BUILD" -G Ninja \
-  -DLLVM_ENABLE_PROJECTS="clang" \
-  -DCMAKE_SYSTEM_NAME=iOS \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_OSX_SYSROOT=iphonesimulator \
-  -DCMAKE_OSX_ARCHITECTURES=arm64 \
-  -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
-  -DCMAKE_INSTALL_PREFIX="$LLVM_SIM_INSTALL" \
-  -DLLVM_BUILD_TOOLS=OFF \
-  -DLLVM_BUILD_UTILS=OFF \
-  -DLLVM_INCLUDE_TOOLS=OFF \
-  -DLLVM_INCLUDE_UTILS=OFF \
-  -DLLVM_INSTALL_TOOLCHAIN_ONLY=ON \
-  -DBUILD_SHARED_LIBS=OFF \
-  -DLLVM_ENABLE_ZLIB=OFF \
-  -DLLVM_ENABLE_ZSTD=OFF \
-  -DLLVM_ENABLE_THREADS=ON \
-  -DLLVM_ENABLE_UNWIND_TABLES=OFF \
-  -DLLVM_ENABLE_EH=OFF \
-  -DLLVM_ENABLE_RTTI=ON \
-  -DLLVM_ENABLE_LIBXML2=OFF \
-  -DLLVM_INCLUDE_TESTS=OFF \
-  -DLLVM_INCLUDE_BENCHMARKS=OFF
-cmake --build "$LLVM_SIM_BUILD" --target llvm-libraries clang-libraries
-cmake --install "$LLVM_SIM_BUILD"
+if [[ "$IOS_DEVICE_ONLY" != "1" ]]; then
+  echo "[1/4] Build LLVM/Clang for iOS Simulator arm64"
+  cmake -S "$LLVM_SRC_DIR/llvm" -B "$LLVM_SIM_BUILD" -G Ninja \
+    -DLLVM_ENABLE_PROJECTS="clang" \
+    -DCMAKE_SYSTEM_NAME=iOS \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_OSX_SYSROOT=iphonesimulator \
+    -DCMAKE_OSX_ARCHITECTURES=arm64 \
+    -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
+    -DCMAKE_INSTALL_PREFIX="$LLVM_SIM_INSTALL" \
+    -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
+    -DLLVM_TARGETS_TO_BUILD="AArch64;ARM;X86" \
+    -DCOMPILER_RT_ENABLE_IOS=FALSE \
+    -DCOMPILER_RT_ENABLE_WATCHOS=FALSE \
+    -DCOMPILER_RT_ENABLE_TVOS=FALSE \
+    -DCOMPILER_RT_ENABLE_XROS=FALSE \
+    -DCLANG_INCLUDE_TESTS=OFF \
+    -DCLANG_BUILD_TOOLS=OFF \
+    -DLLVM_INCLUDE_DOCS=OFF \
+    -DLLVM_INCLUDE_EXAMPLES=OFF \
+    -DLLVM_BUILD_TOOLS=OFF \
+    -DLLVM_BUILD_UTILS=OFF \
+    -DLLVM_INCLUDE_TOOLS=OFF \
+    -DLLVM_INCLUDE_UTILS=OFF \
+    -DLLVM_INSTALL_TOOLCHAIN_ONLY=ON \
+    -DBUILD_SHARED_LIBS=OFF \
+    -DLLVM_ENABLE_ZLIB=OFF \
+    -DLLVM_ENABLE_ZSTD=OFF \
+    -DLLVM_ENABLE_THREADS=ON \
+    -DLLVM_ENABLE_UNWIND_TABLES=OFF \
+    -DLLVM_ENABLE_EH=OFF \
+    -DLLVM_ENABLE_RTTI=ON \
+    -DLLVM_ENABLE_LIBXML2=OFF \
+    -DLLVM_INCLUDE_TESTS=OFF \
+    -DLLVM_INCLUDE_BENCHMARKS=OFF
+  build_llvm_clang_libraries "$LLVM_SIM_BUILD"
+  cmake --install "$LLVM_SIM_BUILD"
+fi
 
 echo "[2/4] Build swift-frontend adapter static library"
 cat > "$SWIFT_FRONTEND_SRC/CMakeLists.txt" <<CMAKE
@@ -189,22 +276,28 @@ libtool -static \
   "$SWIFT_FRONTEND_IOS_INSTALL/lib/libSwiftFrontendAdapter.a" \
   "$EMBEDDED_IOS_LIB"
 
-cmake -S "$SWIFT_FRONTEND_SRC" -B "$SWIFT_FRONTEND_SIM_BUILD" -G Ninja \
-  -DCMAKE_SYSTEM_NAME=iOS \
-  -DCMAKE_OSX_SYSROOT=iphonesimulator \
-  -DCMAKE_OSX_ARCHITECTURES=arm64 \
-  -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_INSTALL_PREFIX="$SWIFT_FRONTEND_SIM_INSTALL"
-cmake --build "$SWIFT_FRONTEND_SIM_BUILD" --target SwiftFrontendAdapter
-cmake --install "$SWIFT_FRONTEND_SIM_BUILD"
-mv "$SWIFT_FRONTEND_SIM_INSTALL/lib/libSwiftFrontend.a" "$SWIFT_FRONTEND_SIM_INSTALL/lib/libSwiftFrontendAdapter.a"
-libtool -static \
-  -o "$SWIFT_FRONTEND_SIM_INSTALL/lib/libSwiftFrontend.a" \
-  "$SWIFT_FRONTEND_SIM_INSTALL/lib/libSwiftFrontendAdapter.a" \
-  "$EMBEDDED_SIM_LIB"
+if [[ "$IOS_DEVICE_ONLY" != "1" ]]; then
+  cmake -S "$SWIFT_FRONTEND_SRC" -B "$SWIFT_FRONTEND_SIM_BUILD" -G Ninja \
+    -DCMAKE_SYSTEM_NAME=iOS \
+    -DCMAKE_OSX_SYSROOT=iphonesimulator \
+    -DCMAKE_OSX_ARCHITECTURES=arm64 \
+    -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX="$SWIFT_FRONTEND_SIM_INSTALL"
+  cmake --build "$SWIFT_FRONTEND_SIM_BUILD" --target SwiftFrontendAdapter
+  cmake --install "$SWIFT_FRONTEND_SIM_BUILD"
+  mv "$SWIFT_FRONTEND_SIM_INSTALL/lib/libSwiftFrontend.a" "$SWIFT_FRONTEND_SIM_INSTALL/lib/libSwiftFrontendAdapter.a"
+  libtool -static \
+    -o "$SWIFT_FRONTEND_SIM_INSTALL/lib/libSwiftFrontend.a" \
+    "$SWIFT_FRONTEND_SIM_INSTALL/lib/libSwiftFrontendAdapter.a" \
+    "$EMBEDDED_SIM_LIB"
+fi
 
-for lib in "$SWIFT_FRONTEND_IOS_INSTALL/lib/libSwiftFrontend.a" "$SWIFT_FRONTEND_SIM_INSTALL/lib/libSwiftFrontend.a"; do
+libs_to_check=("$SWIFT_FRONTEND_IOS_INSTALL/lib/libSwiftFrontend.a")
+if [[ "$IOS_DEVICE_ONLY" != "1" ]]; then
+  libs_to_check+=("$SWIFT_FRONTEND_SIM_INSTALL/lib/libSwiftFrontend.a")
+fi
+for lib in "${libs_to_check[@]}"; do
   if ! nm -gU "$lib" 2>/dev/null | grep -q "swift_frontend_embedded_compile"; then
     echo "エラー: $lib に swift_frontend_embedded_compile が含まれていません。"
     exit 1
@@ -220,29 +313,38 @@ xcodebuild archive \
   -package-path "$ROOT_DIR" \
   SKIP_INSTALL=NO BUILD_LIBRARY_FOR_DISTRIBUTION=YES
 
-xcodebuild archive \
-  -scheme MiniSwiftCompilerCore \
-  -destination "generic/platform=iOS Simulator" \
-  -archivePath "$SWIFT_FRAMEWORK_BUILD/sim.xcarchive" \
-  -derivedDataPath "$SWIFT_FRAMEWORK_BUILD/DerivedData" \
-  -package-path "$ROOT_DIR" \
-  ARCHS=arm64 \
-  SKIP_INSTALL=NO BUILD_LIBRARY_FOR_DISTRIBUTION=YES
+if [[ "$IOS_DEVICE_ONLY" != "1" ]]; then
+  xcodebuild archive \
+    -scheme MiniSwiftCompilerCore \
+    -destination "generic/platform=iOS Simulator" \
+    -archivePath "$SWIFT_FRAMEWORK_BUILD/sim.xcarchive" \
+    -derivedDataPath "$SWIFT_FRAMEWORK_BUILD/DerivedData" \
+    -package-path "$ROOT_DIR" \
+    ARCHS=arm64 \
+    SKIP_INSTALL=NO BUILD_LIBRARY_FOR_DISTRIBUTION=YES
+fi
 
 echo "[4/4] Create unified xcframework"
 XC_ARGS=(
   -create-xcframework
   -framework "$SWIFT_FRAMEWORK_BUILD/ios.xcarchive/Products/Library/Frameworks/MiniSwiftCompilerCore.framework"
-  -framework "$SWIFT_FRAMEWORK_BUILD/sim.xcarchive/Products/Library/Frameworks/MiniSwiftCompilerCore.framework"
   -library "$SWIFT_FRONTEND_IOS_INSTALL/lib/libSwiftFrontend.a" -headers "$SWIFT_FRONTEND_IOS_INSTALL/include"
-  -library "$SWIFT_FRONTEND_SIM_INSTALL/lib/libSwiftFrontend.a" -headers "$SWIFT_FRONTEND_SIM_INSTALL/include"
   -library "$LLVM_IOS_INSTALL/lib/libLLVM.a" -headers "$LLVM_IOS_INSTALL/include"
-  -library "$LLVM_SIM_INSTALL/lib/libLLVM.a" -headers "$LLVM_SIM_INSTALL/include"
   -library "$LLVM_IOS_INSTALL/lib/libclang-cpp.a" -headers "$LLVM_IOS_INSTALL/include"
-  -library "$LLVM_SIM_INSTALL/lib/libclang-cpp.a" -headers "$LLVM_SIM_INSTALL/include"
 )
-if [[ -n "$SILOPT_IOS_LIB" && -n "$SILOPT_SIM_LIB" ]]; then
-  if [[ ! -f "$SILOPT_IOS_LIB" || ! -f "$SILOPT_SIM_LIB" ]]; then
+if [[ "$IOS_DEVICE_ONLY" != "1" ]]; then
+  XC_ARGS+=( -framework "$SWIFT_FRAMEWORK_BUILD/sim.xcarchive/Products/Library/Frameworks/MiniSwiftCompilerCore.framework" )
+  XC_ARGS+=( -library "$SWIFT_FRONTEND_SIM_INSTALL/lib/libSwiftFrontend.a" -headers "$SWIFT_FRONTEND_SIM_INSTALL/include" )
+  XC_ARGS+=( -library "$LLVM_SIM_INSTALL/lib/libLLVM.a" -headers "$LLVM_SIM_INSTALL/include" )
+  XC_ARGS+=( -library "$LLVM_SIM_INSTALL/lib/libclang-cpp.a" -headers "$LLVM_SIM_INSTALL/include" )
+fi
+if [[ -n "$SILOPT_IOS_LIB" && ( "$IOS_DEVICE_ONLY" == "1" || -n "$SILOPT_SIM_LIB" ) ]]; then
+  if [[ ! -f "$SILOPT_IOS_LIB" ]]; then
+    echo "エラー: 指定された SILOptimizer ライブラリが見つかりません。"
+    echo "  iOS: $SILOPT_IOS_LIB"
+    exit 1
+  fi
+  if [[ "$IOS_DEVICE_ONLY" != "1" && ! -f "$SILOPT_SIM_LIB" ]]; then
     echo "エラー: 指定された SILOptimizer ライブラリが見つかりません。"
     echo "  iOS: $SILOPT_IOS_LIB"
     echo "  Sim: $SILOPT_SIM_LIB"
@@ -250,16 +352,20 @@ if [[ -n "$SILOPT_IOS_LIB" && -n "$SILOPT_SIM_LIB" ]]; then
   fi
   echo "Swift SILOptimizer を unified に追加します"
   XC_ARGS+=(-library "$SILOPT_IOS_LIB" -headers "$ROOT_DIR/Native/SwiftSILOptimizerAdapter")
-  XC_ARGS+=(-library "$SILOPT_SIM_LIB" -headers "$ROOT_DIR/Native/SwiftSILOptimizerAdapter")
+  if [[ "$IOS_DEVICE_ONLY" != "1" ]]; then
+    XC_ARGS+=(-library "$SILOPT_SIM_LIB" -headers "$ROOT_DIR/Native/SwiftSILOptimizerAdapter")
+  fi
 else
   echo "警告: SILOptimizer static lib が未指定のため unified への追加をスキップします"
 fi
-if [[ -n "$RUNTIME_IOS_LIB" && -n "$RUNTIME_SIM_LIB" ]]; then
-  echo "Swift runtime を unified に追加します"
+if [[ -n "$RUNTIME_IOS_LIB" ]]; then
+  echo "Swift runtime(iOS) を unified に追加します"
   XC_ARGS+=(-library "$RUNTIME_IOS_LIB" -headers "$RUNTIME_IOS_HEADERS")
-  XC_ARGS+=(-library "$RUNTIME_SIM_LIB" -headers "$RUNTIME_SIM_HEADERS")
+  if [[ "$IOS_DEVICE_ONLY" != "1" && -n "$RUNTIME_SIM_LIB" ]]; then
+    XC_ARGS+=(-library "$RUNTIME_SIM_LIB" -headers "$RUNTIME_SIM_HEADERS")
+  fi
 else
-  echo "警告: Swift runtime static lib が見つからないため unified への追加をスキップします"
+  echo "警告: Swift runtime static lib(iOS) が見つからないため unified への追加をスキップします"
 fi
 XC_ARGS+=(-output "$UNIFIED_OUT")
 xcodebuild "${XC_ARGS[@]}"

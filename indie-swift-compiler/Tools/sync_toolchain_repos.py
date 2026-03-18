@@ -13,11 +13,13 @@ def is_commit_ref(ref: str) -> bool:
     return len(ref) in {40, 64} and all(ch in "0123456789abcdef" for ch in ref.lower())
 
 
-def ensure_repo(root: Path, name: str, remote: str, ref: str, depth: int) -> None:
+def ensure_repo(root: Path, name: str, remote: str, ref: str, depth: int, fetch_tags: bool) -> None:
     path = root / name
     clone_cmd = ["git", "clone"]
     if depth > 0:
         clone_cmd += ["--depth", str(depth), "--single-branch"]
+    if not fetch_tags:
+        clone_cmd += ["--no-tags"]
     clone_cmd += ["--branch", ref, remote, str(path)]
 
     if not path.exists():
@@ -26,7 +28,8 @@ def ensure_repo(root: Path, name: str, remote: str, ref: str, depth: int) -> Non
     fetch_cmd = ["git", "fetch", "origin"]
     if depth > 0:
         fetch_cmd += ["--depth", str(depth)]
-    fetch_cmd += ["--tags"]
+    if not fetch_tags:
+        fetch_cmd += ["--no-tags"]
     if not is_commit_ref(ref):
         fetch_cmd.append(ref)
     run(fetch_cmd, cwd=path)
@@ -46,6 +49,7 @@ def main() -> None:
     refs = scheme.get("repos", {})
     clone_pattern = config.get("https-clone-pattern", "https://github.com/%s.git")
     depth = int(config.get("clone-depth", config.get("fetch-depth", 1)))
+    fetch_tags = bool(config.get("fetch-tags", False))
 
     workspace = Path(args.workspace)
     workspace.mkdir(parents=True, exist_ok=True)
@@ -59,8 +63,8 @@ def main() -> None:
 
         remote_url = clone_pattern % remote_id
         ref = refs[name]
-        print(f"sync {name}: {ref} (depth={depth})")
-        ensure_repo(workspace, name, remote_url, ref, depth)
+        print(f"sync {name}: {ref} (depth={depth}, fetch_tags={fetch_tags})")
+        ensure_repo(workspace, name, remote_url, ref, depth, fetch_tags)
 
     print(f"同期完了: {workspace}")
 
