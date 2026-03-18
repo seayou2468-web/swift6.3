@@ -1,0 +1,348 @@
+#include "NativePipeline.h"
+
+#include <cerrno>
+#include <cstdio>
+#include <filesystem>
+#include <fstream>
+#include <regex>
+#include <sstream>
+#include <string>
+#include <sys/wait.h>
+#include <unistd.h>
+#include <vector>
+
+namespace swiftlite {
+namespace {
+
+struct CommandResult {
+  int exitCode = -1;
+  std::string output;
+};
+
+std::string trim(const std::string &v) {
+  const auto begin = v.find_first_not_of(" \t\r\n");
+  if (begin == std::string::npos) {
+    return "";
+  }
+  const auto end = v.find_last_not_of(" \t\r\n");
+  return v.substr(begin, end - begin + 1);
+}
+
+bool parseIntLiteral(const std::string &token, int64_t &value) {
+  static const std::regex kIntPattern(R"(^-?[0-9]+$)");
+  const std::string t = trim(token);
+  if (!std::regex_match(t, kIntPattern)) {
+    return false;
+  }
+  try {
+    value = std::stoll(t);
+    return true;
+  } catch (...) {
+    return false;
+  }
+}
+
+std::vector<std::string> splitLines(const std::string &source) {
+  std::vector<std::string> lines;
+  std::istringstream stream(source);
+  std::string line;
+  while (std::getline(stream, line)) {
+    lines.push_back(line);
+  }
+  return lines;
+}
+
+PipelineResult parseFunctionBlock(const std::vector<std::string> &lines, size_t &index,
+                                  ParsedProgram &program) {
+  static const std::regex kFuncHeaderPattern(
+      R"(^func\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*\)\s*->\s*Int\s*\{\s*$)");
+  static const std::regex kSingleLineFuncPattern(
+      R"(^func\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*\)\s*->\s*Int\s*\{\s*return\s+(-?[0-9]+)\s*\}\s*$)");
+
+  std::smatch m;
+  std::string line = trim(lines[index]);
+
+  if (std::regex_match(line, m, kSingleLineFuncPattern)) {
+    ParsedFuncDecl f;
+    f.name = m[1].str();
+    if (!parseIntLiteral(m[2].str(), f.returnValue)) {
+      return {SWL_ERR_PARSE_FAILED, "関数return値の解析に失敗しました: line " +
+                                        std::to_string(index + 1)};
+    }
+    program.functions.push_back(f);
+    return {SWL_OK, ""};
+  }
+
+  if (!std::regex_match(line, m, kFuncHeaderPattern)) {
+    return {SWL_ERR_UNSUPPORTED_SYNTAX,
+            "MVP未対応の関数宣言です (line " + std::to_string(index + 1) + ")"};
+  }
+
+  const std::string funcName = m[1].str();
+  ++index;
+  while (index < lines.size() && trim(lines[index]).empty()) {
+    ++index;
+  }
+
+  if (index >= lines.size()) {
+    return {SWL_ERR_PARSE_FAILED, "関数ボディが不正です: " + funcName};
+  }
+
+  static const std::regex kReturnPattern(R"(^return\s+(-?[0-9]+)\s*$)");
+  std::smatch retMatch;
+  const std::string returnLine = trim(lines[index]);
+  if (!std::regex_match(returnLine, retMatch, kReturnPattern)) {
+    return {SWL_ERR_UNSUPPORTED_SYNTAX,
+            "MVP関数は `return <int>` のみ対応です (line " +
+                std::to_string(index + 1) + ")"};
+  }
+
+  int64_t returnValue = 0;
+  if (!parseIntLiteral(retMatch[1].str(), returnValue)) {
+    return {SWL_ERR_PARSE_FAILED, "関数return値の解析に失敗しました: line " +
+                                      std::to_string(index + 1)};
+  }
+
+  ++index;
+  while (index < lines.size() && trim(lines[index]).empty()) {
+    ++index;
+  }
+
+  if (index >= lines.size() || trim(lines[index]) != "}") {
+    return {SWL_ERR_PARSE_FAILED, "関数の閉じ括弧 `}` が不足しています: " + funcName};
+  }
+
+  program.functions.push_back({funcName, returnValue});
+  return {SWL_OK, ""};
+}
+
+PipelineResult parseProgram(const std::string &source, ParsedProgram &program) {
+  static const std::regex kImportPattern(R"(^import\s+[A-Za-z_][A-Za-z0-9_]*$)");
+  static const std::regex kVarPattern(
+      R"(^(let|var)\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(-?[0-9]+)\s*$)");
+
+  auto lines = splitLines(source);
+  for (size_t i = 0; i < lines.size(); ++i) {
+    const auto cleaned = trim(lines[i]);
+    if (cleaned.empty() || cleaned.rfind("//", 0) == 0) {
+      continue;
+    }
+
+    std::smatch m;
+    if (std::regex_match(cleaned, kImportPattern)) {
+      continue;
+    }
+
+    if (std::regex_match(cleaned, m, kVarPattern)) {
+      ParsedVarDecl v;
+      v.mutableVar = (m[1].str() == "var");
+      v.name = m[2].str();
+      if (!parseIntLiteral(m[3].str(), v.value)) {
+        return {SWL_ERR_PARSE_FAILED,
+                "整数リテラルの解析に失敗しました: line " + std::to_string(i + 1)};
+      }
+      program.globals.push_back(v);
+      continue;
+    }
+
+    if (cleaned.rfind("func ", 0) == 0) {
+      if (auto result = parseFunctionBlock(lines, i, program); result.code != SWL_OK) {
+        return result;
+      }
+      continue;
+    }
+
+    return {SWL_ERR_UNSUPPORTED_SYNTAX,
+            "MVP未対応の構文です (line " + std::to_string(i + 1) + "): " + cleaned};
+  }
+
+  if (program.globals.empty() && program.functions.empty()) {
+    return {SWL_ERR_PARSE_FAILED, "有効な宣言が見つかりませんでした"};
+  }
+
+  return {SWL_OK, ""};
+}
+
+std::string generateCSource(const ParsedProgram &program,
+                            const std::string &moduleName) {
+  std::ostringstream out;
+  out << "// Generated by swift-lite native pipeline\n";
+  out << "// module: " << moduleName << "\n\n";
+
+  for (const auto &g : program.globals) {
+    if (g.mutableVar) {
+      out << "long long " << g.name << " = " << g.value << ";\n";
+    } else {
+      out << "const long long " << g.name << " = " << g.value << ";\n";
+    }
+  }
+
+  if (!program.globals.empty()) {
+    out << "\n";
+  }
+
+  for (const auto &f : program.functions) {
+    out << "long long " << f.name << "(void) { return " << f.returnValue
+        << "; }\n";
+  }
+  return out.str();
+}
+
+CommandResult runCommand(const std::vector<std::string> &args) {
+  CommandResult result;
+  if (args.empty()) {
+    result.output = "command is empty";
+    return result;
+  }
+
+  int pipefd[2];
+  if (pipe(pipefd) != 0) {
+    result.output = "pipe() failed";
+    return result;
+  }
+
+  const pid_t pid = fork();
+  if (pid < 0) {
+    close(pipefd[0]);
+    close(pipefd[1]);
+    result.output = "fork() failed";
+    return result;
+  }
+
+  if (pid == 0) {
+    dup2(pipefd[1], STDERR_FILENO);
+    dup2(pipefd[1], STDOUT_FILENO);
+    close(pipefd[0]);
+    close(pipefd[1]);
+
+    std::vector<char *> argv;
+    argv.reserve(args.size() + 1);
+    for (const auto &a : args) {
+      argv.push_back(const_cast<char *>(a.c_str()));
+    }
+    argv.push_back(nullptr);
+
+    execvp(argv[0], argv.data());
+    dprintf(STDERR_FILENO, "execvp failed: errno=%d", errno);
+    _exit(127);
+  }
+
+  close(pipefd[1]);
+  char buffer[256];
+  ssize_t n = 0;
+  while ((n = read(pipefd[0], buffer, sizeof(buffer))) > 0) {
+    result.output.append(buffer, static_cast<size_t>(n));
+  }
+  close(pipefd[0]);
+
+  int status = 0;
+  if (waitpid(pid, &status, 0) < 0) {
+    result.output += "\nwaitpid() failed";
+    return result;
+  }
+
+  if (WIFEXITED(status)) {
+    result.exitCode = WEXITSTATUS(status);
+  } else if (WIFSIGNALED(status)) {
+    result.exitCode = 128 + WTERMSIG(status);
+  }
+
+  return result;
+}
+
+PipelineResult writeTempSourceAndCompile(const std::string &source,
+                                         const SDKConfig &config,
+                                         const std::string &targetTriple,
+                                         const std::string &outputPath,
+                                         const std::string &moduleName,
+                                         const std::string &clangPath,
+                                         bool emitIR) {
+  ParsedProgram program;
+  if (auto parse = parseProgram(source, program); parse.code != SWL_OK) {
+    return parse;
+  }
+
+  const auto cSource =
+      generateCSource(program, moduleName.empty() ? "swiftlite" : moduleName);
+
+  std::error_code ec;
+  const std::filesystem::path outPath(outputPath);
+  const auto parent = outPath.parent_path();
+  if (!parent.empty()) {
+    std::filesystem::create_directories(parent, ec);
+    if (ec) {
+      return {SWL_ERR_INTERNAL, "出力ディレクトリ作成に失敗しました: " + parent.string()};
+    }
+  }
+
+  const std::filesystem::path tempSourceDir = parent.empty() ? std::filesystem::current_path() : parent;
+  const std::filesystem::path tempSource =
+      tempSourceDir / (outPath.stem().string() + "_swiftlite_tmp.c");
+
+  {
+    std::ofstream ofs(tempSource);
+    ofs << cSource;
+    ofs.flush();
+  }
+
+  if (!std::filesystem::exists(tempSource)) {
+    return {SWL_ERR_INTERNAL, "一時Cソースの生成に失敗しました"};
+  }
+
+  std::vector<std::string> args;
+  args.push_back(clangPath.empty() ? "clang" : clangPath);
+  args.push_back("-std=c11");
+  args.push_back("-Werror");
+  args.push_back("-Wall");
+  args.push_back("-target");
+  args.push_back(targetTriple);
+  args.push_back("-isysroot");
+  args.push_back(config.sdkRoot);
+  if (emitIR) {
+    args.push_back("-S");
+    args.push_back("-emit-llvm");
+  } else {
+    args.push_back("-c");
+  }
+  args.push_back(tempSource.string());
+  args.push_back("-o");
+  args.push_back(outputPath);
+
+  auto run = runCommand(args);
+  std::filesystem::remove(tempSource, ec);
+
+  if (run.exitCode != 0) {
+    return {SWL_ERR_EMIT_FAILED, "clang 実行失敗: " + run.output};
+  }
+
+  if (!std::filesystem::exists(outPath)) {
+    return {SWL_ERR_EMIT_FAILED,
+            "clangは成功しましたが出力ファイルが存在しません: " + outputPath};
+  }
+
+  return {SWL_OK, ""};
+}
+
+} // namespace
+
+PipelineResult compileToObject(const std::string &source,
+                               const SDKConfig &config,
+                               const std::string &targetTriple,
+                               const std::string &outputPath,
+                               const std::string &moduleName,
+                               const std::string &clangPath) {
+  return writeTempSourceAndCompile(source, config, targetTriple, outputPath,
+                                   moduleName, clangPath, false);
+}
+
+PipelineResult emitLLVMIR(const std::string &source,
+                          const SDKConfig &config,
+                          const std::string &targetTriple,
+                          const std::string &outputPath,
+                          const std::string &moduleName,
+                          const std::string &clangPath) {
+  return writeTempSourceAndCompile(source, config, targetTriple, outputPath,
+                                   moduleName, clangPath, true);
+}
+
+} // namespace swiftlite

@@ -1,0 +1,42 @@
+name: swiftlite-ios
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'swift-lite/**'
+      - '.github/workflows/swiftlite-ios.yml'
+
+jobs:
+  build-ios-arm64:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache build output
+        uses: actions/cache@v4
+        with:
+          path: |
+            swift-lite/out
+          key: ${{ runner.os }}-swiftlite-${{ hashFiles('swift-lite/**') }}
+
+      - name: Configure and build core
+        run: |
+          ./swift-lite/scripts/build-core.sh
+
+      - name: Package static artifact
+        run: |
+          ./swift-lite/scripts/package-ios.sh
+
+      - name: Create xcframework
+        run: |
+          ./swift-lite/scripts/create-xcframework.sh
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: swiftlite-ios
+          path: |
+            swift-lite/out/swiftlite-dist
+            swift-lite/out/swiftlite.xcframework
