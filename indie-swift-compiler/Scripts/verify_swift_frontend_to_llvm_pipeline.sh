@@ -27,8 +27,8 @@ LLVM_AS="${LLVM_AS_PATH:-$(command -v llvm-as || true)}"
 LLC="${LLC_PATH:-$(command -v llc || true)}"
 CLANG="${CLANG_PATH:-$(command -v clang || true)}"
 
-if [[ -z "$LLVM_AS" || -z "$LLC" || -z "$CLANG" ]]; then
-  echo "llvm-as / llc / clang のいずれかが見つかりません"
+if [[ -z "$CLANG" ]]; then
+  echo "clang が見つかりません"
   exit 1
 fi
 
@@ -39,7 +39,7 @@ public func appMain() -> Int32 {
 }
 SWIFT
 
-FRONTEND_ARGS=(-frontend -emit-ir "$WORK_DIR/input.swift" -module-name PipelineVerify -o "$WORK_DIR/output.ll")
+FRONTEND_ARGS=(-frontend -parse-as-library -emit-ir "$WORK_DIR/input.swift" -module-name PipelineVerify -o "$WORK_DIR/output.ll")
 if [[ -n "$SDK_PATH" ]]; then
   FRONTEND_ARGS+=(-sdk "$SDK_PATH")
 fi
@@ -50,12 +50,19 @@ if ! rg -q "define .*@main" "$WORK_DIR/output.ll"; then
   exit 1
 fi
 
-"$LLVM_AS" "$WORK_DIR/output.ll" -o "$WORK_DIR/output.bc"
-"$LLC" -filetype=obj "$WORK_DIR/output.bc" -o "$WORK_DIR/output.o"
-"$CLANG" "$WORK_DIR/output.o" -o "$WORK_DIR/app"
+if [[ -n "$LLVM_AS" && -n "$LLC" ]]; then
+  "$LLVM_AS" "$WORK_DIR/output.ll" -o "$WORK_DIR/output.bc"
+  "$LLC" -filetype=obj "$WORK_DIR/output.bc" -o "$WORK_DIR/output.o"
+  "$CLANG" "$WORK_DIR/output.o" -o "$WORK_DIR/app"
+else
+  echo "llvm-as/llc がないため clang -x ir で直接リンクします"
+  "$CLANG" -x ir "$WORK_DIR/output.ll" -o "$WORK_DIR/app"
+fi
 
+set +e
 "$WORK_DIR/app"
 STATUS=$?
+set -e
 if [[ $STATUS -ne 42 ]]; then
   echo "期待値 42 と不一致: $STATUS"
   exit 1
