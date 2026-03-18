@@ -10,7 +10,7 @@
 1. **ビルド時に最小ツールチェーンを同梱**
    - `swift-frontend`
    - `llvm-project`（必要なライブラリのみ）
-   - `cmark`, `swift-syntax`, `swift-driver`, `swift-llvm-bindings`
+   - `cmark`, `swift-syntax`, `swift-llvm-bindings`
 2. **アプリ実行時はローカルのみ**
    - `swift-frontend -emit-ir` 相当のパスをローカルで実行
    - サーバー通信なし

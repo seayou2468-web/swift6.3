@@ -135,8 +135,14 @@ swift test
 - `llvm-project`
 - `cmark`
 - `swift-syntax`
-- `swift-driver`
 - `swift-llvm-bindings`
+
+無効化ポリシー（`compatibility-profile.json`）:
+
+- Swift Package Manager 連携
+- Macro system
+- Indexing / IDE support
+- Driver（`swiftc` 相当）
 
 ## 7. XCFramework生成
 
