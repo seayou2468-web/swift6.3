@@ -14,9 +14,16 @@ on:
       - "indie-swift-compiler/**"
       - ".github/workflows/release-toolchain.yml"
 
+concurrency:
+  group: release-toolchain-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-release:
     runs-on: macos-latest
+    timeout-minutes: 360
+    permissions:
+      contents: read
     defaults:
       run:
         shell: bash
@@ -26,6 +33,7 @@ jobs:
       SCHEME: ${{ github.event.inputs.scheme || 'release/6.3' }}
       REQUIRED_XCODE_VERSION: ""
       ALLOW_RUNTIME_FAILURE: "1"
+      BUILD_ID: ${{ github.run_number }}-${{ github.run_attempt }}
 
     steps:
       - name: Checkout
@@ -43,6 +51,13 @@ jobs:
         run: |
           ./Scripts/ci_release_ordered_build.sh "$SCHEME"
 
+      - name: Show generated files
+        run: |
+          echo "== Artifacts =="
+          find Artifacts -maxdepth 2 -type d -name "*.xcframework" | sort
+          echo "== Dist =="
+          ls -la Dist
+
       - name: Upload Artifacts directory
         uses: actions/upload-artifact@v4
         with:
@@ -52,3 +67,4 @@ jobs:
             indie-swift-compiler/Dist/**
           if-no-files-found: error
           retention-days: 14
+          compression-level: 0

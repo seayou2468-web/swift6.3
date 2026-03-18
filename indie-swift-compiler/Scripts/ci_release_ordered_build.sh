@@ -8,6 +8,7 @@ OUT_DIR="$ROOT_DIR/Artifacts"
 DIST_DIR="$ROOT_DIR/Dist"
 DRY_RUN="${CI_DRY_RUN:-0}"
 ALLOW_RUNTIME_FAILURE="${ALLOW_RUNTIME_FAILURE:-1}"
+BUILD_ID="${BUILD_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
 
 log() {
   echo "[ci-release] $*"
@@ -23,6 +24,14 @@ run_step() {
     "$@"
   fi
   log "DONE : $name"
+}
+
+require_path() {
+  local target="$1"
+  if [[ ! -e "$target" ]]; then
+    echo "[ci-release] ERROR: required artifact not found: $target" >&2
+    return 1
+  fi
 }
 
 mkdir -p "$OUT_DIR" "$DIST_DIR"
@@ -44,16 +53,29 @@ else
 fi
 
 if [[ "$DRY_RUN" != "1" ]]; then
+  require_path "$OUT_DIR/SwiftToolchainKit.xcframework"
+  require_path "$OUT_DIR/SwiftFrontend.xcframework"
+
   MANIFEST="$DIST_DIR/release-manifest.txt"
   {
     echo "scheme=$SCHEME"
+    echo "build_id=$BUILD_ID"
     echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "git_commit=$(git -C "$ROOT_DIR/.." rev-parse --short HEAD)"
     echo "artifacts:"
     find "$OUT_DIR" -maxdepth 2 -type d -name "*.xcframework" | sort
   } > "$MANIFEST"
 
-  ZIP_PATH="$DIST_DIR/SwiftToolchainKit-${SCHEME//\//-}.zip"
+  CHECKSUMS="$DIST_DIR/release-checksums.txt"
+  : > "$CHECKSUMS"
+  while IFS= read -r framework_path; do
+    /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$framework_path" "$DIST_DIR/$(basename "$framework_path").zip"
+    shasum -a 256 "$DIST_DIR/$(basename "$framework_path").zip" >> "$CHECKSUMS"
+  done < <(find "$OUT_DIR" -maxdepth 2 -type d -name "*.xcframework" | sort)
+
+  ZIP_PATH="$DIST_DIR/SwiftToolchainKit-${SCHEME//\//-}-${BUILD_ID}.zip"
   /usr/bin/zip -qry "$ZIP_PATH" "$OUT_DIR" "$MANIFEST"
+  shasum -a 256 "$ZIP_PATH" >> "$CHECKSUMS"
   log "Release package created: $ZIP_PATH"
 fi
 
