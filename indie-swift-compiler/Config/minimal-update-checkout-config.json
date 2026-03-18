@@ -1,0 +1,53 @@
+{
+  "ssh-clone-pattern": "git@github.com:%s.git",
+  "https-clone-pattern": "https://github.com/%s.git",
+  "repos": {
+    "swift": {
+      "remote": {
+        "id": "swiftlang/swift"
+      }
+    },
+    "llvm-project": {
+      "remote": {
+        "id": "swiftlang/llvm-project"
+      }
+    },
+    "cmark": {
+      "remote": {
+        "id": "swiftlang/swift-cmark"
+      }
+    },
+    "swift-syntax": {
+      "remote": {
+        "id": "swiftlang/swift-syntax"
+      }
+    },
+    "swift-driver": {
+      "remote": {
+        "id": "swiftlang/swift-driver"
+      }
+    },
+    "swift-llvm-bindings": {
+      "remote": {
+        "id": "swiftlang/swift-llvm-bindings"
+      }
+    }
+  },
+  "default-branch-scheme": "release/6.3",
+  "branch-schemes": {
+    "release/6.3": {
+      "aliases": [
+        "swift/release/6.3",
+        "release/6.3"
+      ],
+      "repos": {
+        "swift": "release/6.3",
+        "llvm-project": "swift/release/6.3",
+        "cmark": "release/6.3",
+        "swift-syntax": "release/6.3",
+        "swift-driver": "release/6.3",
+        "swift-llvm-bindings": "swift/release/6.3"
+      }
+    }
+  }
+}

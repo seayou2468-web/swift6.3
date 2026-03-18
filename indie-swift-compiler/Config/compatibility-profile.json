@@ -1,0 +1,24 @@
+{
+  "name": "swift-full-compat-lite",
+  "goal": "Swift言語互換性を優先しつつ、余分な機能を削って依存とビルド負荷を最小化する",
+  "backend": {
+    "primary": "swift-frontend",
+    "fallback": "lightweight-swiftsyntax"
+  },
+  "enable": [
+    "swift",
+    "llvm-project",
+    "cmark",
+    "swift-syntax",
+    "swift-driver",
+    "swift-llvm-bindings"
+  ],
+  "disable": [
+    "lldb",
+    "sourcekit-lsp",
+    "swift-docc",
+    "swift-format",
+    "swift-stress-tester",
+    "swift-sdk-generator"
+  ]
+}

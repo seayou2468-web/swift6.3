@@ -1,0 +1,13 @@
+{
+  "name": "swift-to-llvm-irgen-core",
+  "description": "Swift本家から抽出した Swift->LLVM IR 変換導線の最小ソースセット",
+  "headers": [
+    "include/swift/IRGen/IRGenPublic.h"
+  ],
+  "sources": [
+    "lib/IRGen/IRGen.cpp",
+    "lib/IRGen/IRGenModule.cpp",
+    "lib/IRGen/GenFunc.cpp",
+    "lib/IRGen/GenType.cpp"
+  ]
+}
