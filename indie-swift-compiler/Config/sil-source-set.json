@@ -1,0 +1,17 @@
+{
+  "name": "swift-sil-optimizer-core",
+  "description": "Swift本家から抽出した SIL middle層（SIL/Optimizer）最小ソースセット",
+  "headers": [
+    "include/swift/SIL/SILModule.h",
+    "include/swift/SIL/SILFunction.h",
+    "include/swift/SILOptimizer/PassManager/PassManager.h"
+  ],
+  "sources": [
+    "lib/SIL/IR/SILModule.cpp",
+    "lib/SIL/IR/SILFunction.cpp",
+    "lib/SIL/Verifier/SILVerifier.cpp",
+    "lib/SILOptimizer/PassManager/PassManager.cpp",
+    "lib/SILOptimizer/PassManager/Passes.cpp",
+    "lib/SILOptimizer/Transforms/PerformanceInliner.cpp"
+  ]
+}

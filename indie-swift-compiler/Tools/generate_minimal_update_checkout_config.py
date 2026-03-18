@@ -8,7 +8,6 @@ REQUIRED_REPOS = [
     "llvm-project",
     "cmark",
     "swift-syntax",
-    "swift-driver",
     "swift-llvm-bindings",
 ]
 

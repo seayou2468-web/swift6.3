@@ -22,11 +22,6 @@
         "id": "swiftlang/swift-syntax"
       }
     },
-    "swift-driver": {
-      "remote": {
-        "id": "swiftlang/swift-driver"
-      }
-    },
     "swift-llvm-bindings": {
       "remote": {
         "id": "swiftlang/swift-llvm-bindings"
@@ -45,7 +40,6 @@
         "llvm-project": "swift/release/6.3",
         "cmark": "release/6.3",
         "swift-syntax": "release/6.3",
-        "swift-driver": "release/6.3",
         "swift-llvm-bindings": "swift/release/6.3"
       }
     }

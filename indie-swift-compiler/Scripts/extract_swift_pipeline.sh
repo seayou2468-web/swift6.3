@@ -37,6 +37,17 @@ copy_if_exists "lib/IRGen/GenType.cpp"
 copy_if_exists "include/swift/IRGen/IRGen.h"
 copy_if_exists "include/swift/IRGen/IRGenPublic.h"
 
+# Swift SIL middle層（SIL最適化導線、参照専用）
+copy_if_exists "include/swift/SIL/SILModule.h"
+copy_if_exists "include/swift/SIL/SILFunction.h"
+copy_if_exists "include/swift/SILOptimizer/PassManager/PassManager.h"
+copy_if_exists "lib/SIL/IR/SILModule.cpp"
+copy_if_exists "lib/SIL/IR/SILFunction.cpp"
+copy_if_exists "lib/SIL/Verifier/SILVerifier.cpp"
+copy_if_exists "lib/SILOptimizer/PassManager/PassManager.cpp"
+copy_if_exists "lib/SILOptimizer/PassManager/Passes.cpp"
+copy_if_exists "lib/SILOptimizer/Transforms/PerformanceInliner.cpp"
+
 cat > "$OUT_DIR/EXTRACTED.md" <<MARKDOWN
 # Extracted Swift Frontend References
 
@@ -44,7 +55,7 @@ cat > "$OUT_DIR/EXTRACTED.md" <<MARKDOWN
 関与する主要導線を追うための参照用コピーです。
 
 - この新規コンパイラのビルドには **使用しません**。
-- 依存切り離しのため、MiniSwiftCompilerCore は SwiftSyntax のみで動作します。
+- 依存切り離しのため、MiniSwiftCompilerCore は swift-frontend adapter 経路で動作します。
 MARKDOWN
 
 echo "抽出完了: $OUT_DIR"

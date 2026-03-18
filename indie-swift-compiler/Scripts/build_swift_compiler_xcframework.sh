@@ -33,3 +33,11 @@ xcodebuild -create-xcframework \
   -output "$OUTPUT_DIR/$FRAMEWORK_NAME.xcframework"
 
 echo "作成完了: $OUTPUT_DIR/$FRAMEWORK_NAME.xcframework"
+
+echo "swift-frontend adapter (.a + .h) のXCFrameworkを生成します"
+"$ROOT_DIR/Scripts/build_swift_frontend_xcframework.sh"
+
+echo "Swift runtime のXCFramework生成を試行します"
+if ! "$ROOT_DIR/Scripts/build_swift_runtime_xcframework.sh"; then
+  echo "警告: Swift runtime のXCFramework生成に失敗しました。環境依存のためスキップします。"
+fi
