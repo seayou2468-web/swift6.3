@@ -22,29 +22,46 @@ mkdir -p "$IOS_BUILD" "$SIM_BUILD" "$OUT_DIR"
 
 build_llvm_clang_libraries() {
   local build_dir="$1"
-  local -a targets=()
   local target_list
   target_list="$(ninja -C "$build_dir" -t targets all 2>/dev/null | awk '{print $1}')"
 
-  if printf '%s\n' "$target_list" | grep -qx 'llvm-libraries'; then
-    targets+=(llvm-libraries)
-  elif printf '%s\n' "$target_list" | grep -qx 'lib/all'; then
-    targets+=(lib/all)
-  else
-    targets+=(all)
-  fi
+  local -a llvm_candidates=(llvm-libraries lib/all all)
+  local -a clang_candidates=(clang-libraries clang-cpp clang "")
+  local -a build_args=()
+  local tried=0
 
-  if printf '%s\n' "$target_list" | grep -qx 'clang-libraries'; then
-    targets+=(clang-libraries)
-  elif printf '%s\n' "$target_list" | grep -qx 'clang-cpp'; then
-    targets+=(clang-cpp)
-  elif printf '%s\n' "$target_list" | grep -qx 'clang'; then
-    targets+=(clang)
-  fi
+  for llvm_t in "${llvm_candidates[@]}"; do
+    if [[ "$llvm_t" != "all" ]] && ! printf '%s\n' "$target_list" | grep -qx "$llvm_t"; then
+      continue
+    fi
 
-  echo "LLVM/Clang build targets: ${targets[*]}"
-  cmake --build "$build_dir" --target "${targets[@]}"
+    for clang_t in "${clang_candidates[@]}"; do
+      if [[ -n "$clang_t" ]] && [[ "$clang_t" != "clang" ]] && ! printf '%s\n' "$target_list" | grep -qx "$clang_t"; then
+        continue
+      fi
+      if [[ "$clang_t" == "clang" ]] && ! printf '%s\n' "$target_list" | grep -qx 'clang'; then
+        continue
+      fi
+
+      build_args=(--target "$llvm_t")
+      if [[ -n "$clang_t" ]]; then
+        build_args+=("$clang_t")
+      fi
+
+      tried=$((tried+1))
+      echo "LLVM/Clang build attempt #$tried: ${build_args[*]}"
+      if cmake --build "$build_dir" "${build_args[@]}"; then
+        return 0
+      fi
+
+      echo "WARN: build attempt failed. trying next fallback targets..."
+    done
+  done
+
+  echo "WARN: no target combination succeeded, fallback to plain 'cmake --build'"
+  cmake --build "$build_dir"
 }
+
 
 # iOS Device
 cmake -S "$LLVM_PROJECT/llvm" -B "$IOS_BUILD" -G Ninja \

@@ -9,6 +9,7 @@ DIST_DIR="$ROOT_DIR/Dist"
 LOG_DIR="$DIST_DIR/logs"
 DRY_RUN="${CI_DRY_RUN:-0}"
 ALLOW_RUNTIME_FAILURE="${ALLOW_RUNTIME_FAILURE:-1}"
+VERIFY_IOS_EMBEDDING_STRICT="${VERIFY_IOS_EMBEDDING_STRICT:-0}"
 BUILD_ID="${BUILD_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
 export NSUnbufferedIO="${NSUnbufferedIO:-YES}"
 
@@ -73,7 +74,7 @@ else
 fi
 
 if [[ "$DRY_RUN" != "1" ]]; then
-  run_step "Verify iOS embedding readiness (frontend/runtime)" "$ROOT_DIR/Scripts/verify_ios_embedding_readiness.sh" "$OUT_DIR"
+  run_step "Verify iOS embedding readiness (frontend/runtime)" env VERIFY_IOS_EMBEDDING_STRICT="$VERIFY_IOS_EMBEDDING_STRICT" "$ROOT_DIR/Scripts/verify_ios_embedding_readiness.sh" "$OUT_DIR"
 
   require_path "$OUT_DIR/SwiftToolchainKit.xcframework"
   require_path "$OUT_DIR/SwiftFrontend.xcframework"

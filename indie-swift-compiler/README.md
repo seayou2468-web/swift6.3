@@ -307,6 +307,9 @@ iOSアプリ組み込み可否（embedded frontend symbol / runtime 同梱状況
 ./Scripts/verify_ios_embedding_readiness.sh
 ```
 
+既定は警告モード（`VERIFY_IOS_EMBEDDING_STRICT=0`）で、チェック不一致があってもCIパイプラインを停止させません。
+厳格運用時のみ `VERIFY_IOS_EMBEDDING_STRICT=1` を指定して fail-fast にできます。
+
 ## 8. iOS組み込み
 
 1. 生成した `MiniSwiftCompilerCore.xcframework` をXcodeに追加。
