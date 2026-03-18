@@ -3,6 +3,7 @@
   "https-clone-pattern": "https://github.com/%s.git",
   "clone-depth": 1,
   "fetch-depth": 1,
+  "fetch-tags": false,
   "repos": {
     "swift": {
       "remote": {
