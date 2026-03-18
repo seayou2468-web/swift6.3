@@ -77,6 +77,8 @@ if [[ "$DRY_RUN" != "1" ]]; then
   /usr/bin/zip -qry "$ZIP_PATH" "$OUT_DIR" "$MANIFEST"
   shasum -a 256 "$ZIP_PATH" >> "$CHECKSUMS"
   log "Release package created: $ZIP_PATH"
+
+  "$ROOT_DIR/Scripts/verify_release_bundle.sh" "$DIST_DIR" "$OUT_DIR"
 fi
 
 log "All ordered release steps completed"

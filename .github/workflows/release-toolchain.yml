@@ -58,6 +58,10 @@ jobs:
           echo "== Dist =="
           ls -la Dist
 
+      - name: Verify release bundle
+        run: |
+          ./Scripts/verify_release_bundle.sh
+
       - name: Upload Artifacts directory
         uses: actions/upload-artifact@v4
         with:
