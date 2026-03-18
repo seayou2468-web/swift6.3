@@ -10,10 +10,14 @@
     "llvm-project",
     "cmark",
     "swift-syntax",
-    "swift-driver",
     "swift-llvm-bindings"
   ],
   "disable": [
+    "swift-package-manager",
+    "swift-driver",
+    "swift-macro-system",
+    "indexing",
+    "ide-support",
     "lldb",
     "sourcekit-lsp",
     "swift-docc",
