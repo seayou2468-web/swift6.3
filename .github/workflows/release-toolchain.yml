@@ -21,7 +21,6 @@ concurrency:
 jobs:
   build-release:
     runs-on: macos-latest
-    timeout-minutes: 360
     permissions:
       contents: read
     defaults:
