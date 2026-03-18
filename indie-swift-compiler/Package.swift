@@ -21,8 +21,7 @@ let package = Package(
         .target(
             name: "MiniSwiftCompilerCore",
             dependencies: [
-                .product(name: "SwiftParser", package: "swift-syntax"),
-                .product(name: "SwiftSyntax", package: "swift-syntax")
+                .product(name: "SwiftParser", package: "swift-syntax")
             ]
         ),
         .testTarget(

@@ -63,7 +63,10 @@ indie-swift-compiler/
 - `func foo() -> Int { return 1 + 2 }` のようなシンプルな関数をパース。
 - `let` 束縛 + 変数参照 + `+ - * /` を含む式を独自IRにlowering。
 - LLVM IR 文字列を生成（`alloca/load/add/sub/mul/sdiv/ret`）。
-- `SWIFT_FRONTEND_PATH` を設定すると、既定で `swift-frontend` 経路（Swift本家互換優先）を使用。
+- `swift-frontend` はパス未指定でも自動探索（`SWIFT_FRONTEND_PATH` → `xcrun --find` → `PATH`）。
+- Swift frontend adapter を `libSwiftFrontend.a` + `SwiftIRGenAdapter.h` として iOS/simulator 向けに生成可能。
+- `swift_irgen_adapter_compile` シンボルをリンク済みなら、Swift側は `.h`/`.a` 経由で実行（Swift側CLI起動なし）。
+- frontend 実行時の `-sdk` は iOSアプリ内 `Documents/sdk` を最優先で使用（未存在時は環境変数・xcrun）。
 
 ## 5. クイックスタート
 
@@ -112,7 +115,7 @@ swift test
 - `swift_irgen_adapter_set_frontend_path(const char*)`
 - `swift_irgen_adapter_compile(const char*, const char*, const char*)`
 
-この実装は `swift-frontend -frontend -emit-ir` を呼び出し、`.ll` を生成します。
+`libSwiftFrontend.a` 側の callback を C API で叩き、内部スレッドでコンパイル処理を実行します。
 
 ## 6.1 最小依存だけ取得する（update-checkout最小JSON）
 
@@ -173,6 +176,12 @@ Artifacts/Clang.xcframework
 3. MiniSwiftCompilerCore をビルド
 4. `SwiftToolchainKit.xcframework` を生成
 
+統合XCFrameworkには以下を同梱します。
+
+- `MiniSwiftCompilerCore.framework`（device/simulator）
+- `libSwiftFrontend.a` + `SwiftIRGenAdapter.h`（device/simulator）
+- `libLLVM.a` / `libclang-cpp.a`（device/simulator）
+
 ## 8. iOS組み込み
 
 1. 生成した `MiniSwiftCompilerCore.xcframework` をXcodeに追加。
@@ -198,11 +207,17 @@ import MiniSwiftCompilerCore
 let bridge = MiniSwiftCompilerBridge()
 let ir = try bridge.compileToIRUsingSwiftFrontend(
     source: "struct S<T> { let value: T }\\nfunc main() -> Int { 1 }",
-    moduleName: "AppModule",
-    swiftFrontendPath: "/path/to/swift-frontend"
+    moduleName: "AppModule"
 )
 print(ir)
 ```
+
+また、以下の環境変数を与えると iOS SDK を指定したIR出力が可能です。
+
+- `SWIFT_TARGET_TRIPLE` (例: `arm64-apple-ios15.0`)
+- `SWIFT_SDK_PATH` または `SWIFT_SDK` (例: `iphoneos`)
+
+デフォルトでは `Documents/sdk` が存在すればそれを `-sdk` に使います（アプリ同梱SDK向け）。
 
 ## 9. 依存整理
 
