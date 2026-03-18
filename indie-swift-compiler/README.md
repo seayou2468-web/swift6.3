@@ -207,6 +207,8 @@ Linux上で `Swift -> swift-frontend -> LLVM -> 実行` を検証する場合は
 - `Dist/release-manifest.txt` 出力（scheme, build_id, commit, 生成物一覧）
 - 各 xcframework zip の SHA-256 および最終配布zipの SHA-256 を `Dist/release-checksums.txt` に出力
 - `Scripts/verify_release_bundle.sh` で manifest / checksums / 必須成果物を検証
+- 各ステップの詳細ログを `Dist/logs/*.log` に保存（通常出力は最小化、失敗時のみログ全文表示）
+- `NSUnbufferedIO=YES` を既定化し、CIログの出力遅延を抑制
 
 このスクリプトは以下を順番に実行します。
 

@@ -33,33 +33,15 @@ jobs:
       REQUIRED_XCODE_VERSION: ""
       ALLOW_RUNTIME_FAILURE: "1"
       BUILD_ID: ${{ github.run_number }}-${{ github.run_attempt }}
+      NSUnbufferedIO: "YES"
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Show tool versions
-        run: |
-          sw_vers
-          xcodebuild -version
-          swift --version
-          cmake --version
-          ninja --version
-
       - name: Ordered release build
         run: |
           ./Scripts/ci_release_ordered_build.sh "$SCHEME"
-
-      - name: Show generated files
-        run: |
-          echo "== Artifacts =="
-          find Artifacts -maxdepth 2 -type d -name "*.xcframework" | sort
-          echo "== Dist =="
-          ls -la Dist
-
-      - name: Verify release bundle
-        run: |
-          ./Scripts/verify_release_bundle.sh
 
       - name: Upload Artifacts directory
         uses: actions/upload-artifact@v4

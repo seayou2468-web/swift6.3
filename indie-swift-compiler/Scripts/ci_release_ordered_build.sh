@@ -6,9 +6,11 @@ SCHEME="${1:-release/6.3}"
 TOOLCHAIN_WORKSPACE="${TOOLCHAIN_WORKSPACE:-$ROOT_DIR/.toolchain-workspace}"
 OUT_DIR="$ROOT_DIR/Artifacts"
 DIST_DIR="$ROOT_DIR/Dist"
+LOG_DIR="$DIST_DIR/logs"
 DRY_RUN="${CI_DRY_RUN:-0}"
 ALLOW_RUNTIME_FAILURE="${ALLOW_RUNTIME_FAILURE:-1}"
 BUILD_ID="${BUILD_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
+export NSUnbufferedIO="${NSUnbufferedIO:-YES}"
 
 log() {
   echo "[ci-release] $*"
@@ -17,13 +19,24 @@ log() {
 run_step() {
   local name="$1"
   shift
+  local slug
+  slug="$(echo "$name" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g')"
+  local logfile="$LOG_DIR/${slug}.log"
   log "START: $name"
   if [[ "$DRY_RUN" == "1" ]]; then
-    echo "[dry-run] $*"
+    echo "[dry-run] $*" > "$logfile"
   else
-    "$@"
+    if "$@" >"$logfile" 2>&1; then
+      :
+    else
+      log "FAIL : $name"
+      echo "----- BEGIN LOG: $logfile -----"
+      cat "$logfile"
+      echo "----- END LOG: $logfile -----"
+      return 1
+    fi
   fi
-  log "DONE : $name"
+  log "DONE : $name (log: $logfile)"
 }
 
 require_path() {
@@ -34,20 +47,16 @@ require_path() {
   fi
 }
 
-mkdir -p "$OUT_DIR" "$DIST_DIR"
+mkdir -p "$OUT_DIR" "$DIST_DIR" "$LOG_DIR"
 
 run_step "Swift Package tests" bash -lc "cd '$ROOT_DIR' && swift test"
 run_step "Bootstrap minimal toolchain repos" "$ROOT_DIR/Scripts/bootstrap_minimal_toolchain_repos.sh" "$SCHEME" "$TOOLCHAIN_WORKSPACE"
 run_step "Build unified toolchain xcframework (ordered: llvm/clang -> swift frontend lib -> core -> unified)" "$ROOT_DIR/Scripts/build_unified_toolchain_xcframework.sh" "$SCHEME"
 run_step "Build standalone Swift frontend xcframework" "$ROOT_DIR/Scripts/build_swift_frontend_xcframework.sh"
 if [[ "$ALLOW_RUNTIME_FAILURE" == "1" ]]; then
-  log "START: Build standalone Swift runtime xcframework (optional)"
-  if [[ "$DRY_RUN" == "1" ]]; then
-    echo "[dry-run] $ROOT_DIR/Scripts/build_swift_runtime_xcframework.sh"
-  elif ! "$ROOT_DIR/Scripts/build_swift_runtime_xcframework.sh"; then
+  if ! run_step "Build standalone Swift runtime xcframework optional" "$ROOT_DIR/Scripts/build_swift_runtime_xcframework.sh"; then
     log "WARN : Swift runtime xcframework build failed (optional step)"
   fi
-  log "DONE : Build standalone Swift runtime xcframework (optional)"
 else
   run_step "Build standalone Swift runtime xcframework" "$ROOT_DIR/Scripts/build_swift_runtime_xcframework.sh"
 fi
