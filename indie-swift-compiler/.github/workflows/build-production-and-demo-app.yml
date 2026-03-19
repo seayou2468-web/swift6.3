@@ -11,12 +11,15 @@ jobs:
         working-directory: indie-swift-compiler
     steps:
       - uses: actions/checkout@v4
-      - name: Build production compiler stack
-        run: ./Scripts/build_embedded_compiler_stack.sh
-      - name: Build demo app target in same flow
-        run: swift build -c release --target EmbeddedCompilerIDE
+      - name: Build LLVM/Clang -> MiniSwiftCompilerCore -> Demo app (guaranteed order)
+        run: ./Scripts/build_production_and_demo_app_pipeline.sh
       - name: Run MiniSwiftCompilerCore tests
-        run: swift test
+        run: swift test --no-parallel
+      - name: Upload demo app build inputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: DemoApp-build-inputs
+          path: indie-swift-compiler/Release/DemoAppBuildInputs
       - name: Upload MiniSwiftCompilerCore release build
         uses: actions/upload-artifact@v4
         with:
