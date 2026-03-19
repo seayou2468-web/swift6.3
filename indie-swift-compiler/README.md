@@ -30,3 +30,8 @@ LLVM と Clang への依存は許可し、それらは `LLVM.xcframework` と `C
 - LLVM/Clang 単体配布物は手動実行の `make manual-release` で `Release/` に生成する。
 
 - 抽出コピー更新は `./Scripts/extract_swift_pipeline.sh` をそのまま実行すればよく、外部 Swift リポジトリ指定は不要。
+
+- Makefileを実行してClng.xcframeworkとLLVM.xcframeworkを生成。
+
+
+
