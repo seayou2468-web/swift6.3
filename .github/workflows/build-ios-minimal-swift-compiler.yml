@@ -34,5 +34,7 @@ jobs:
         with:
           name: swift-ios-minimal-deliverables
           path: |
-            artifacts/ClangCxxSupport.xcframework
+            artifacts/LLVM.xcframework
+            artifacts/Clang.xcframework
+            artifacts/Swift.xcframework
             artifacts/install/Library/Developer/Toolchains/SwiftMinimalIOS.xctoolchain

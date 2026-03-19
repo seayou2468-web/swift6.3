@@ -14,13 +14,21 @@ INSTALL_DESTDIR ?= $(ARTIFACTS_DIR)/install
 INSTALL_TOOLCHAIN_DIR ?= /Library/Developer/Toolchains/SwiftMinimalIOS.xctoolchain
 INSTALLED_TOOLCHAIN_ROOT := $(INSTALL_DESTDIR)$(INSTALL_TOOLCHAIN_DIR)
 CLANG_ARTIFACT_DIR ?= $(ARTIFACTS_DIR)/clang-ios-minimal
-XCFRAMEWORK_NAME ?= ClangCxxSupport.xcframework
-XCFRAMEWORK_HEADERS_DIR ?= $(ARTIFACTS_DIR)/clang-ios-minimal-headers
-XCFRAMEWORK_LIB ?= $(ARTIFACTS_DIR)/libClangCxxSupport.a
-XCFRAMEWORK_PATH ?= $(ARTIFACTS_DIR)/$(XCFRAMEWORK_NAME)
+LLVM_XCFRAMEWORK_NAME ?= LLVM.xcframework
+LLVM_XCFRAMEWORK_HEADERS_DIR ?= $(ARTIFACTS_DIR)/llvm-headers
+LLVM_XCFRAMEWORK_LIB ?= $(ARTIFACTS_DIR)/libLLVM.a
+LLVM_XCFRAMEWORK_PATH ?= $(ARTIFACTS_DIR)/$(LLVM_XCFRAMEWORK_NAME)
+CLANG_XCFRAMEWORK_NAME ?= Clang.xcframework
+CLANG_XCFRAMEWORK_HEADERS_DIR ?= $(ARTIFACTS_DIR)/clang-headers
+CLANG_XCFRAMEWORK_LIB ?= $(ARTIFACTS_DIR)/libClang.a
+CLANG_XCFRAMEWORK_PATH ?= $(ARTIFACTS_DIR)/$(CLANG_XCFRAMEWORK_NAME)
+SWIFT_XCFRAMEWORK_NAME ?= Swift.xcframework
+SWIFT_XCFRAMEWORK_HEADERS_DIR ?= $(ARTIFACTS_DIR)/swift-headers
+SWIFT_XCFRAMEWORK_LIB ?= $(ARTIFACTS_DIR)/libSwift.a
+SWIFT_XCFRAMEWORK_PATH ?= $(ARTIFACTS_DIR)/$(SWIFT_XCFRAMEWORK_NAME)
 TOOLCHAIN_STAMP := $(ARTIFACTS_DIR)/.$(BUILD_SUBDIR)-installed
 
-.PHONY: all swift-ios-minimal update-checkout shallowen-checkouts swift-toolchain collect-clang-artifacts package-clang-xcframework clean
+.PHONY: all swift-ios-minimal update-checkout shallowen-checkouts swift-toolchain collect-clang-artifacts package-llvm-xcframework package-clang-xcframework package-swift-xcframework package-xcframeworks clean
 
 all: swift-ios-minimal
 
@@ -28,7 +36,7 @@ define log_info
 	@echo "\033[32m\033[1m[*] \033[0m\033[32m$(1)\033[0m"
 endef
 
-swift-ios-minimal: package-clang-xcframework
+swift-ios-minimal: package-xcframeworks
 
 update-checkout:
 	$(call log_info,syncing Swift 6.3 checkout dependencies)
@@ -83,26 +91,68 @@ collect-clang-artifacts: $(TOOLCHAIN_STAMP)
 		\( -name 'libclang*' -o -name 'libc++*' -o -name 'libc++abi*' -o -name 'libunwind*' \) \
 		-exec cp -f {} "$(CLANG_ARTIFACT_DIR)/lib/" \;
 
-package-clang-xcframework: collect-clang-artifacts
-	$(call log_info,packaging collected clang and C++ artifacts into $(XCFRAMEWORK_NAME))
-	@rm -rf "$(XCFRAMEWORK_HEADERS_DIR)" "$(XCFRAMEWORK_LIB)" "$(XCFRAMEWORK_PATH)"
-	@mkdir -p "$(XCFRAMEWORK_HEADERS_DIR)"
-	@if [ -d "$(CLANG_ARTIFACT_DIR)/include/clang-c" ]; then \
-		rsync -a "$(CLANG_ARTIFACT_DIR)/include/clang-c" "$(XCFRAMEWORK_HEADERS_DIR)/"; \
+package-llvm-xcframework: $(TOOLCHAIN_STAMP)
+	$(call log_info,packaging LLVM static libraries into $(LLVM_XCFRAMEWORK_NAME))
+	@rm -rf "$(LLVM_XCFRAMEWORK_HEADERS_DIR)" "$(LLVM_XCFRAMEWORK_LIB)" "$(LLVM_XCFRAMEWORK_PATH)"
+	@mkdir -p "$(LLVM_XCFRAMEWORK_HEADERS_DIR)"
+	@if [ -d "$(INSTALLED_TOOLCHAIN_ROOT)/usr/include/llvm" ]; then \
+		rsync -a "$(INSTALLED_TOOLCHAIN_ROOT)/usr/include/llvm" "$(LLVM_XCFRAMEWORK_HEADERS_DIR)/"; \
 	fi
-	@if [ -d "$(CLANG_ARTIFACT_DIR)/include/c++" ]; then \
-		rsync -a "$(CLANG_ARTIFACT_DIR)/include/c++" "$(XCFRAMEWORK_HEADERS_DIR)/"; \
+	@if [ -d "$(INSTALLED_TOOLCHAIN_ROOT)/usr/include/llvm-c" ]; then \
+		rsync -a "$(INSTALLED_TOOLCHAIN_ROOT)/usr/include/llvm-c" "$(LLVM_XCFRAMEWORK_HEADERS_DIR)/"; \
 	fi
-	@static_libs=( $$(find "$(CLANG_ARTIFACT_DIR)/lib" -maxdepth 1 -name "*.a" -print | sort) ); \
-	if [[ $${#static_libs[@]} -eq 0 ]]; then \
-		echo "error: no static libraries found under $(CLANG_ARTIFACT_DIR)/lib for xcframework packaging"; \
+	@llvm_libs=( $$(find "$(INSTALLED_TOOLCHAIN_ROOT)/usr/lib" -maxdepth 1 -name "libLLVM*.a" -print | sort) ); \
+	if [[ $${#llvm_libs[@]} -eq 0 ]]; then \
+		echo "error: no LLVM static libraries found under $(INSTALLED_TOOLCHAIN_ROOT)/usr/lib"; \
 		exit 1; \
 	fi; \
-	libtool -static -o "$(XCFRAMEWORK_LIB)" "$${static_libs[@]}"; \
+	libtool -static -o "$(LLVM_XCFRAMEWORK_LIB)" "$${llvm_libs[@]}"; \
 	xcodebuild -create-xcframework \
-		-library "$(XCFRAMEWORK_LIB)" \
-		-headers "$(XCFRAMEWORK_HEADERS_DIR)" \
-		-output "$(XCFRAMEWORK_PATH)"
+		-library "$(LLVM_XCFRAMEWORK_LIB)" \
+		-headers "$(LLVM_XCFRAMEWORK_HEADERS_DIR)" \
+		-output "$(LLVM_XCFRAMEWORK_PATH)"
+
+package-clang-xcframework: collect-clang-artifacts
+	$(call log_info,packaging Clang and C++ static libraries into $(CLANG_XCFRAMEWORK_NAME))
+	@rm -rf "$(CLANG_XCFRAMEWORK_HEADERS_DIR)" "$(CLANG_XCFRAMEWORK_LIB)" "$(CLANG_XCFRAMEWORK_PATH)"
+	@mkdir -p "$(CLANG_XCFRAMEWORK_HEADERS_DIR)"
+	@if [ -d "$(CLANG_ARTIFACT_DIR)/include/clang-c" ]; then \
+		rsync -a "$(CLANG_ARTIFACT_DIR)/include/clang-c" "$(CLANG_XCFRAMEWORK_HEADERS_DIR)/"; \
+	fi
+	@if [ -d "$(CLANG_ARTIFACT_DIR)/include/c++" ]; then \
+		rsync -a "$(CLANG_ARTIFACT_DIR)/include/c++" "$(CLANG_XCFRAMEWORK_HEADERS_DIR)/"; \
+	fi
+	@clang_libs=( $$(find "$(CLANG_ARTIFACT_DIR)/lib" -maxdepth 1 -name "*.a" -print | sort) ); \
+	if [[ $${#clang_libs[@]} -eq 0 ]]; then \
+		echo "error: no Clang/C++ static libraries found under $(CLANG_ARTIFACT_DIR)/lib"; \
+		exit 1; \
+	fi; \
+	libtool -static -o "$(CLANG_XCFRAMEWORK_LIB)" "$${clang_libs[@]}"; \
+	xcodebuild -create-xcframework \
+		-library "$(CLANG_XCFRAMEWORK_LIB)" \
+		-headers "$(CLANG_XCFRAMEWORK_HEADERS_DIR)" \
+		-output "$(CLANG_XCFRAMEWORK_PATH)"
+
+package-swift-xcframework: $(TOOLCHAIN_STAMP)
+	$(call log_info,packaging Swift compiler static libraries into $(SWIFT_XCFRAMEWORK_NAME))
+	@rm -rf "$(SWIFT_XCFRAMEWORK_HEADERS_DIR)" "$(SWIFT_XCFRAMEWORK_LIB)" "$(SWIFT_XCFRAMEWORK_PATH)"
+	@mkdir -p "$(SWIFT_XCFRAMEWORK_HEADERS_DIR)"
+	@if [ -d "$(INSTALLED_TOOLCHAIN_ROOT)/usr/include/swift" ]; then \
+		rsync -a "$(INSTALLED_TOOLCHAIN_ROOT)/usr/include/swift" "$(SWIFT_XCFRAMEWORK_HEADERS_DIR)/"; \
+	fi
+	@swift_libs=( $$(find "$(INSTALLED_TOOLCHAIN_ROOT)/usr/lib" "$(INSTALLED_TOOLCHAIN_ROOT)/usr/lib/swift/host" -maxdepth 1 \
+		\( -name "libSwift*.a" -o -name "libswift*.a" -o -name "lib_InternalSwift*.a" \) -print 2>/dev/null | sort -u) ); \
+	if [[ $${#swift_libs[@]} -eq 0 ]]; then \
+		echo "error: no Swift compiler static libraries found under $(INSTALLED_TOOLCHAIN_ROOT)/usr/lib or usr/lib/swift/host"; \
+		exit 1; \
+	fi; \
+	libtool -static -o "$(SWIFT_XCFRAMEWORK_LIB)" "$${swift_libs[@]}"; \
+	xcodebuild -create-xcframework \
+		-library "$(SWIFT_XCFRAMEWORK_LIB)" \
+		-headers "$(SWIFT_XCFRAMEWORK_HEADERS_DIR)" \
+		-output "$(SWIFT_XCFRAMEWORK_PATH)"
+
+package-xcframeworks: package-llvm-xcframework package-clang-xcframework package-swift-xcframework
 
 clean:
 	$(call log_info,cleaning generated artifacts)
