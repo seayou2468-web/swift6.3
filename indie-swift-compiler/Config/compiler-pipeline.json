@@ -1,12 +1,17 @@
 {
-  "name": "indie-swift-compiler-default-pipeline",
-  "goal": "Swift source を最小依存で frontend/SILOptimizer/IRGen に流す",
+  "name": "indie-swift-compiler-direct-embedded-pipeline",
+  "goal": "Swift source を完全抽出した parser/AST/Sema/SILGen/SIL/SILOptimizer/IRGen に流し LLVM へ渡す",
   "stageOrder": [
     "swift",
-    "swift-frontend",
+    "parser",
+    "ast",
+    "sema",
+    "silgen",
+    "sil",
     "sil-optimizer-mandatory",
     "sil-optimizer-performance",
-    "irgen"
+    "irgen",
+    "llvm"
   ],
   "stages": {
     "swift": {
@@ -17,14 +22,54 @@
       ],
       "dependsOn": []
     },
-    "swift-frontend": {
-      "kind": "frontend",
+    "parser": {
+      "kind": "frontend-parser",
       "entrypoints": [
-        "swift_irgen_adapter_emit_sil",
-        "swift_frontend_embedded_emit_sil"
+        "swift_parser_embedded_parse",
+        "swift_parser_extract_parse"
       ],
       "dependsOn": [
         "swift"
+      ]
+    },
+    "ast": {
+      "kind": "frontend-ast",
+      "entrypoints": [
+        "swift_ast_embedded_build_module",
+        "swift_ast_extract_build_module"
+      ],
+      "dependsOn": [
+        "parser"
+      ]
+    },
+    "sema": {
+      "kind": "frontend-sema",
+      "entrypoints": [
+        "swift_sema_embedded_typecheck",
+        "swift_sema_extract_typecheck"
+      ],
+      "dependsOn": [
+        "ast"
+      ]
+    },
+    "silgen": {
+      "kind": "frontend-silgen",
+      "entrypoints": [
+        "swift_silgen_embedded_emit_raw_sil",
+        "swift_silgen_extract_emit_raw_sil"
+      ],
+      "dependsOn": [
+        "sema"
+      ]
+    },
+    "sil": {
+      "kind": "middle-end-sil",
+      "entrypoints": [
+        "swift_sil_embedded_materialize_module",
+        "swift_irgen_adapter_emit_sil"
+      ],
+      "dependsOn": [
+        "silgen"
       ]
     },
     "sil-optimizer-mandatory": {
@@ -34,7 +79,7 @@
         "swift_sil_optimizer_embedded_run_mandatory"
       ],
       "dependsOn": [
-        "swift-frontend"
+        "sil"
       ]
     },
     "sil-optimizer-performance": {
@@ -48,7 +93,7 @@
       ]
     },
     "irgen": {
-      "kind": "backend",
+      "kind": "backend-irgen",
       "entrypoints": [
         "swift_irgen_adapter_emit_ir_from_sil",
         "swift_irgen_embedded_emit_ir_from_sil"
@@ -56,18 +101,34 @@
       "dependsOn": [
         "sil-optimizer-performance"
       ]
+    },
+    "llvm": {
+      "kind": "backend-llvm",
+      "entrypoints": [
+        "llvm_embedded_optimize_module",
+        "llvm_embedded_emit_object"
+      ],
+      "dependsOn": [
+        "irgen"
+      ]
     }
   },
   "embeddedArtifacts": {
-    "frontendAdapter": "libSwiftFrontend.a",
+    "parserExtract": "Vendor/SwiftFrontendExtract/include/swift/Parse",
+    "astExtract": "Vendor/SwiftFrontendExtract/include/swift/AST",
+    "semaExtract": "Vendor/SwiftFrontendExtract/lib/Sema",
+    "silgenExtract": "Vendor/SwiftFrontendExtract/lib/SILGen",
+    "silExtract": "Vendor/SwiftFrontendExtract/lib/SIL",
     "silOptimizerAdapter": "libSwiftSILOptimizer.a",
-    "irgenHeaders": "Native/SwiftIRGenAdapter",
-    "silOptimizerHeaders": "Native/SwiftSILOptimizerAdapter"
+    "irgenExtract": "Vendor/SwiftFrontendExtract/lib/IRGen",
+    "clangXCFramework": "Clang.xcframework",
+    "llvmXCFramework": "LLVM.xcframework"
   },
   "dependencyProfile": {
     "keepMinimal": [
       "swift",
       "llvm-project",
+      "clang",
       "cmark",
       "swift-syntax",
       "swift-llvm-bindings"

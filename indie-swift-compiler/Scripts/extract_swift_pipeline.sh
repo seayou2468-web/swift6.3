@@ -24,8 +24,21 @@ copy_if_exists() {
   fi
 }
 
-# Swift -> LLVM IR 変換の主要導線（参照専用）
-copy_if_exists "lib/FrontendTool/FrontendTool.cpp"
+# Parser / AST / Sema / SILGen / SIL / SILOptimizer / IRGen の完全抽出（内蔵前提）
+copy_if_exists "include/swift/Parse/Parser.h"
+copy_if_exists "lib/Parse/ParseDecl.cpp"
+copy_if_exists "lib/Parse/ParseExpr.cpp"
+copy_if_exists "lib/Parse/ParseStmt.cpp"
+copy_if_exists "include/swift/AST/ASTContext.h"
+copy_if_exists "include/swift/AST/Module.h"
+copy_if_exists "lib/AST/ASTContext.cpp"
+copy_if_exists "lib/AST/Module.cpp"
+copy_if_exists "include/swift/Sema/TypeChecker.h"
+copy_if_exists "lib/Sema/TypeCheckDecl.cpp"
+copy_if_exists "lib/Sema/TypeCheckExpr.cpp"
+copy_if_exists "include/swift/SILGen/SILGen.h"
+copy_if_exists "lib/SILGen/SILGen.cpp"
+copy_if_exists "lib/SILGen/SILGenFunction.cpp"
 copy_if_exists "lib/IRGen/IRGen.cpp"
 copy_if_exists "lib/IRGen/IRGenModule.cpp"
 copy_if_exists "lib/IRGen/GenCall.cpp"
@@ -53,13 +66,13 @@ copy_if_exists "lib/SILOptimizer/PassManager/Passes.cpp"
 copy_if_exists "lib/SILOptimizer/Transforms/PerformanceInliner.cpp"
 
 cat > "$OUT_DIR/EXTRACTED.md" <<MARKDOWN
-# Extracted Swift Frontend References
+# Extracted Swift Embedded Compiler Components
 
-このディレクトリは、Swift本家リポジトリから「Swift AST/SIL から LLVM IR 生成」に
-関与する主要導線を追うための参照用コピーです。
+このディレクトリは、Swift本家リポジトリから Parser / AST / Sema / SILGen / SIL / SILOptimizer / IRGen を
+完全抽出して独自コンパイラに内蔵するための作業コピーです。
 
-- この新規コンパイラのビルドには **使用しません**。
-- 依存切り離しのため、MiniSwiftCompilerCore は swift-frontend adapter 経路で動作します。
+- 抽出したコンポーネントの使用を許可します。
+- 新規コンパイラは swift-frontend 実行ファイルではなく、ここで抽出した層を直接内蔵する方針です。
 MARKDOWN
 
 echo "抽出完了: $OUT_DIR"
