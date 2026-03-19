@@ -61,6 +61,9 @@ jobs:
           restore-keys: |
             build-${{ runner.os }}-xcode-${{ env.XCODE_VERSION }}-
 
+      - name: Ensure swift/utils scripts are executable
+        run: python3 ./scripts/ensure_exec_bits.py --root ./swift/utils
+
       - name: Update checkout to Swift 6.3-compatible revisions
         run: python3 ./swift/utils/update-checkout --scheme "${UPDATE_CHECKOUT_SCHEME}" --clone --skip-history --skip-tags --reset-to-remote --skip-repository swift
 

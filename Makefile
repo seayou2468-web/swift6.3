@@ -30,7 +30,7 @@ SWIFT_XCFRAMEWORK_LIB ?= $(ARTIFACTS_DIR)/libSwift.a
 SWIFT_XCFRAMEWORK_PATH ?= $(ARTIFACTS_DIR)/$(SWIFT_XCFRAMEWORK_NAME)
 TOOLCHAIN_STAMP := $(ARTIFACTS_DIR)/.$(BUILD_SUBDIR)-installed
 
-.PHONY: all swift-ios-minimal update-checkout shallowen-checkouts swift-toolchain collect-clang-artifacts package-llvm-xcframework package-clang-xcframework package-swift-xcframework package-xcframeworks clean
+.PHONY: all swift-ios-minimal ensure-script-exec update-checkout shallowen-checkouts swift-toolchain collect-clang-artifacts package-llvm-xcframework package-clang-xcframework package-swift-xcframework package-xcframeworks clean
 
 all: swift-ios-minimal
 
@@ -40,7 +40,11 @@ endef
 
 swift-ios-minimal: package-xcframeworks
 
-update-checkout:
+ensure-script-exec:
+	$(call log_info,ensuring scripts in swift/utils are executable when they have a shebang)
+	@python3 ./scripts/ensure_exec_bits.py --root "$(SWIFT_DIR)/utils"
+
+update-checkout: ensure-script-exec
 	$(call log_info,syncing Swift 6.3 checkout dependencies)
 	$(UPDATE_CHECKOUT)
 
