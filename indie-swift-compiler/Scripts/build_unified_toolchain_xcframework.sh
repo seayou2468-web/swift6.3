@@ -32,6 +32,8 @@ RUNTIME_IOS_LIB="${SWIFT_RUNTIME_IOS_LIB:-}"
 RUNTIME_IOS_HEADERS="${SWIFT_RUNTIME_IOS_HEADERS:-}"
 APPLE_ARCH="${APPLE_ARCH:-arm64}"
 LLVM_ARCH="${LLVM_ARCH:-AArch64}"
+HOST_OS="$(uname -s)"
+HOST_ARCH="$(uname -m)"
 APPLE_LINKER_CMAKE_FLAGS=()
 NATIVE_LLVM_CMAKE_FLAGS=()
 
@@ -47,7 +49,14 @@ require_tool python3
 require_tool libtool
 require_tool nm
 
-clear_inherited_apple_build_flags() {
+require_darwin_host() {
+  if [[ "$HOST_OS" != "Darwin" ]]; then
+    echo "エラー: このスクリプトは macOS ホストでのみ実行できます。検出: $HOST_OS"
+    exit 1
+  fi
+}
+
+clear_inherited_apple_build_env() {
   unset CFLAGS
   unset CXXFLAGS
   unset CPPFLAGS
@@ -57,6 +66,14 @@ clear_inherited_apple_build_flags() {
   unset CMAKE_EXE_LINKER_FLAGS
   unset CMAKE_SHARED_LINKER_FLAGS
   unset CMAKE_MODULE_LINKER_FLAGS
+  unset SDKROOT
+  unset CMAKE_OSX_SYSROOT
+  unset CMAKE_OSX_ARCHITECTURES
+  unset MACOSX_DEPLOYMENT_TARGET
+  unset IPHONEOS_DEPLOYMENT_TARGET
+  unset TVOS_DEPLOYMENT_TARGET
+  unset WATCHOS_DEPLOYMENT_TARGET
+  unset XROS_DEPLOYMENT_TARGET
 }
 
 configure_apple_linker_cmake_flags() {
@@ -111,6 +128,9 @@ build_native_llvm_tablegen_tools() {
 
   cmake -S "$llvm_source_dir" -B "$build_dir" -G Ninja \
     -DLLVM_ENABLE_PROJECTS="clang" \
+    -DCMAKE_SYSTEM_NAME=Darwin \
+    -DCMAKE_OSX_SYSROOT=macosx \
+    -DCMAKE_OSX_ARCHITECTURES="$HOST_ARCH" \
     -DCMAKE_BUILD_TYPE=Release \
     -DLLVM_TARGETS_TO_BUILD="Native" \
     -DCLANG_INCLUDE_TESTS=OFF \
@@ -277,7 +297,8 @@ rm -rf "$LLVM_NATIVE_BUILD" "$LLVM_IOS_BUILD" "$SWIFT_FRAMEWORK_BUILD" "$SWIFT_F
 mkdir -p "$LLVM_NATIVE_BUILD" "$LLVM_IOS_BUILD" "$SWIFT_FRAMEWORK_BUILD" "$SWIFT_FRONTEND_IOS_BUILD" "$SWIFT_FRONTEND_SRC"
 
 echo "[1/4] Build LLVM/Clang for iOS arm64"
-clear_inherited_apple_build_flags
+require_darwin_host
+clear_inherited_apple_build_env
 configure_apple_linker_cmake_flags
 build_native_llvm_tablegen_tools "$LLVM_SRC_DIR/llvm" "$LLVM_NATIVE_BUILD"
 cmake -S "$LLVM_SRC_DIR/llvm" -B "$LLVM_IOS_BUILD" -G Ninja \
