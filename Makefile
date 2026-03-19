@@ -4,7 +4,7 @@ ROOT := $(abspath .)
 SWIFT_DIR := $(ROOT)/swift
 
 UPDATE_CHECKOUT_SCHEME ?= release/6.3
-UPDATE_CHECKOUT ?= python3 $(SWIFT_DIR)/utils/update-checkout --scheme $(UPDATE_CHECKOUT_SCHEME) --clone --skip-history --skip-tags --reset-to-remote
+UPDATE_CHECKOUT ?= python3 $(SWIFT_DIR)/utils/update-checkout --scheme $(UPDATE_CHECKOUT_SCHEME) --clone --skip-history --skip-tags --reset-to-remote --skip-repository swift
 SHALLOW_SUBMODULE_JOBS ?= 8
 
 BUILD_PRESET ?= ios_minimal_compiler_embedded
