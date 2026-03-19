@@ -24,7 +24,7 @@ jobs:
           xcode-version: '26.1.1'
 
       - name: Update checkout to Swift 6.3-compatible revisions
-        run: python3 ./swift/utils/update-checkout --scheme release/6.3 --clone --skip-history --reset-to-remote
+        run: python3 ./swift/utils/update-checkout --scheme release/6.3 --clone --skip-history --skip-tags --reset-to-remote
 
       - name: Build the minimal iOS Swift compiler configuration
         run: "make swift-ios-minimal UPDATE_CHECKOUT=:"

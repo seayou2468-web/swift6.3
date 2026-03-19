@@ -1,8 +1,11 @@
+SHELL := bash
+
 ROOT := $(abspath .)
 SWIFT_DIR := $(ROOT)/swift
 
 UPDATE_CHECKOUT_SCHEME ?= release/6.3
-UPDATE_CHECKOUT ?= python3 $(SWIFT_DIR)/utils/update-checkout --scheme $(UPDATE_CHECKOUT_SCHEME) --clone --skip-history --reset-to-remote
+UPDATE_CHECKOUT ?= python3 $(SWIFT_DIR)/utils/update-checkout --scheme $(UPDATE_CHECKOUT_SCHEME) --clone --skip-history --skip-tags --reset-to-remote
+SHALLOW_SUBMODULE_JOBS ?= 8
 
 BUILD_PRESET ?= ios_minimal_compiler_embedded
 BUILD_SUBDIR ?= ios_minimal_compiler
@@ -13,7 +16,7 @@ INSTALLED_TOOLCHAIN_ROOT := $(INSTALL_DESTDIR)$(INSTALL_TOOLCHAIN_DIR)
 CLANG_ARTIFACT_DIR ?= $(ARTIFACTS_DIR)/clang-ios-minimal
 TOOLCHAIN_STAMP := $(ARTIFACTS_DIR)/.$(BUILD_SUBDIR)-installed
 
-.PHONY: all swift-ios-minimal update-checkout swift-toolchain collect-clang-artifacts clean
+.PHONY: all swift-ios-minimal update-checkout shallowen-checkouts swift-toolchain collect-clang-artifacts clean
 
 all: swift-ios-minimal
 
@@ -27,7 +30,26 @@ update-checkout:
 	$(call log_info,syncing Swift 6.3 checkout dependencies)
 	$(UPDATE_CHECKOUT)
 
-$(TOOLCHAIN_STAMP): update-checkout
+shallowen-checkouts: update-checkout
+	$(call log_info,forcing checkout submodules to stay shallow and tagless)
+	@find "$(ROOT)" -mindepth 1 -maxdepth 1 -type d | while read -r repo; do \
+		if [[ ! -e "$$repo/.git" ]]; then continue; fi; \
+		git -C "$$repo" config remote.origin.tagOpt --no-tags || true; \
+		if [[ -f "$$repo/.gitmodules" ]]; then \
+			while read -r key _; do \
+				name="$${key#submodule.}"; \
+				name="$${name%.path}"; \
+				git -C "$$repo" config "submodule.$$name.shallow" true; \
+			done < <(git -C "$$repo" config --file .gitmodules --get-regexp "^submodule\..*\.path$$" || true); \
+			git -C "$$repo" submodule sync --recursive || true; \
+			git -C "$$repo" submodule deinit -f --all || true; \
+			rm -rf "$$repo/.git/modules"; \
+			git -C "$$repo" submodule update --init --recursive --depth 1 --recommend-shallow --jobs "$(SHALLOW_SUBMODULE_JOBS)"; \
+			git -C "$$repo" submodule foreach --recursive "git config remote.origin.tagOpt --no-tags || true"; \
+		fi; \
+	done
+
+$(TOOLCHAIN_STAMP): shallowen-checkouts
 	$(call log_info,building the minimal iOS Swift compiler toolchain with preset $(BUILD_PRESET))
 	mkdir -p "$(ARTIFACTS_DIR)"
 	rm -f "$(TOOLCHAIN_STAMP)"
