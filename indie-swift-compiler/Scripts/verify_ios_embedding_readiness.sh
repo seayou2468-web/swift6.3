@@ -22,7 +22,10 @@ if [[ ! -d "$UNIFIED_XC" ]]; then
   exit 0
 fi
 
-mapfile -t frontend_libs < <(find "$UNIFIED_XC" -type f -name 'libSwiftFrontend.a' | sort)
+frontend_libs=()
+while IFS= read -r frontend_lib; do
+  frontend_libs+=("$frontend_lib")
+done < <(find "$UNIFIED_XC" -type f -name 'libSwiftFrontend.a' | sort)
 if [[ ${#frontend_libs[@]} -eq 0 ]]; then
   warn_or_fail "unified xcframework に libSwiftFrontend.a が含まれていません"
 fi
@@ -42,7 +45,10 @@ if [[ ${#frontend_libs[@]} -gt 0 ]]; then
   done
 fi
 
-mapfile -t runtime_libs < <(find "$UNIFIED_XC" -type f -name 'libswiftCore.a' | sort)
+runtime_libs=()
+while IFS= read -r runtime_lib; do
+  runtime_libs+=("$runtime_lib")
+done < <(find "$UNIFIED_XC" -type f -name 'libswiftCore.a' | sort)
 if [[ ${#runtime_libs[@]} -gt 0 ]]; then
   echo "OK: unified xcframework に Swift runtime を同梱済み"
   printf '  %s\n' "${runtime_libs[@]}"

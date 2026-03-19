@@ -156,7 +156,10 @@ build_compiler_rt() {
 collect_compiler_rt() {
   local install_dir="$1"
   local out_lib="$2"
-  mapfile -t libs < <(find "$install_dir" -type f -name 'libclang_rt*.a' | sort)
+  local -a libs=()
+  while IFS= read -r lib_path; do
+    libs+=("$lib_path")
+  done < <(find "$install_dir" -type f -name 'libclang_rt*.a' | sort)
   if [[ ${#libs[@]} -eq 0 ]]; then
     echo "エラー: compiler-rt library が見つかりません: $install_dir"
     exit 1

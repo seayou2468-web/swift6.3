@@ -36,7 +36,10 @@ print(json.dumps(manifest, sort_keys=True, separators=(",", ":")))
 PY
 )"
 
-mapfile -t REQUIRED_REPOS < <(python3 - <<PY
+REQUIRED_REPOS=()
+while IFS= read -r repo_name; do
+  REQUIRED_REPOS+=("$repo_name")
+done < <(python3 - <<PY
 import json
 from pathlib import Path
 config = json.loads(Path("$MIN_CONFIG").read_text(encoding="utf-8"))
