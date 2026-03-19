@@ -3,51 +3,15 @@
 #include <filesystem>
 
 namespace {
-#if defined(__GNUC__) || defined(__clang__)
-extern "C" int swift_sil_optimizer_embedded_run_mandatory(
-    const char *input_sil_path,
-    const char *module_name,
-    const char *out_sil_path) __attribute__((weak));
-extern "C" int swift_sil_optimizer_embedded_run_performance(
-    const char *input_sil_path,
-    const char *module_name,
-    const char *out_sil_path) __attribute__((weak));
-#else
-extern "C" int swift_sil_optimizer_embedded_run_mandatory(
-    const char *input_sil_path,
-    const char *module_name,
-    const char *out_sil_path);
-extern "C" int swift_sil_optimizer_embedded_run_performance(
-    const char *input_sil_path,
-    const char *module_name,
-    const char *out_sil_path);
-#endif
-
 swift_sil_optimizer_adapter_mandatory_fn gMandatoryCallback = nullptr;
 swift_sil_optimizer_adapter_performance_fn gPerformanceCallback = nullptr;
 
 swift_sil_optimizer_adapter_mandatory_fn resolveMandatoryCallback() {
-  if (gMandatoryCallback != nullptr) {
-    return gMandatoryCallback;
-  }
-#if defined(__GNUC__) || defined(__clang__)
-  if (swift_sil_optimizer_embedded_run_mandatory != nullptr) {
-    return swift_sil_optimizer_embedded_run_mandatory;
-  }
-#endif
-  return nullptr;
+  return gMandatoryCallback;
 }
 
 swift_sil_optimizer_adapter_performance_fn resolvePerformanceCallback() {
-  if (gPerformanceCallback != nullptr) {
-    return gPerformanceCallback;
-  }
-#if defined(__GNUC__) || defined(__clang__)
-  if (swift_sil_optimizer_embedded_run_performance != nullptr) {
-    return swift_sil_optimizer_embedded_run_performance;
-  }
-#endif
-  return nullptr;
+  return gPerformanceCallback;
 }
 
 } // namespace
