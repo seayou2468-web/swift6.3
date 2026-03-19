@@ -75,7 +75,8 @@ indie-swift-compiler/
   stage API が未提供な場合のみ従来の単段 adapter にフォールバックして LLVM IR文字列を生成。
 - Swift側の実行は `swift_irgen_adapter_compile` シンボル経由（CLIフォールバックなし）。
 - `SwiftIRGenAdapter` は `swift_frontend_embedded_compile` 実体（または callback）を呼び出してIR生成。
-- `Native/SwiftFrontendEmbedded/SwiftFrontendEmbedded.cpp` で `swift-frontend` 実行ラッパーをビルドし、
+- `Native/SwiftFrontendEmbedded/SwiftFrontendEmbedded.cpp` で `swift/FrontendTool/FrontendTool.h`
+  の `swift::performFrontend` を直接リンクした埋め込み frontend をビルドし、
   `swift_frontend_embedded_compile` / `swift_frontend_embedded_emit_sil` 実体を提供。
 - `SwiftSILOptimizerAdapter` を追加し、抽出済み `SILOptimizer` を独自コンパイラへ埋め込むための
   middle-end 接続点を用意。
@@ -162,8 +163,9 @@ SIL middle層（SIL/Optimizer）の依存分析を行う場合:
 - `swift_sil_optimizer_adapter_run_performance(const char*, const char*, const char*)`
 - `swift_sil_optimizer_adapter_optimize(const char*, const char*, const char*)`
 
-`libSwiftFrontend.a` は、adapter本体 + `swift_frontend_embedded_compile` 実装ライブラリを同梱した
-静的ライブラリとして生成します。
+`libSwiftFrontend.a` は、adapter本体 + `swift::performFrontend` ベースの
+`swift_frontend_embedded_compile` 実装 + 必要な swift/clang/LLVM 静的ライブラリ群を
+束ねた静的ライブラリとして生成します。
 
 `libSwiftSILOptimizer.a` は、SIL抽出ソース + `SwiftSILOptimizerAdapter` をまとめた
 静的ライブラリとして生成します。

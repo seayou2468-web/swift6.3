@@ -1,17 +1,14 @@
-#include <cerrno>
-#include <cstdio>
+#include "swift/FrontendTool/FrontendTool.h"
+
+#include "llvm/ADT/SmallVector.h"
+
 #include <cstdlib>
-#include <cstring>
 #include <filesystem>
 #include <fstream>
-#include <spawn.h>
 #include <string>
 #include <string_view>
-#include <sys/wait.h>
 #include <unistd.h>
 #include <vector>
-
-extern char **environ;
 
 namespace {
 
@@ -22,10 +19,6 @@ std::string getEnv(std::string_view key) {
     }
   }
   return "";
-}
-
-std::string resolveFrontendPath() {
-  return getEnv("SWIFT_FRONTEND_PATH");
 }
 
 std::string resolveTargetTriple(const char *targetTriple) {
@@ -42,28 +35,22 @@ std::string resolveSDKPath(const char *sdkPath) {
   return getEnv("SWIFT_SDK_PATH");
 }
 
-int runFrontend(const std::vector<std::string> &args) {
-  std::vector<char *> argv;
-  argv.reserve(args.size() + 1);
+std::string resolveResourceDir() {
+  return getEnv("SWIFT_RESOURCE_DIR");
+}
+
+int performFrontendInvocation(const std::vector<std::string> &args) {
+  llvm::SmallVector<const char *, 32> argv;
+  argv.reserve(args.size());
   for (const std::string &arg : args) {
-    argv.push_back(const_cast<char *>(arg.c_str()));
-  }
-  argv.push_back(nullptr);
-
-  pid_t pid = 0;
-  int spawnRC = posix_spawn(&pid, argv[0], nullptr, nullptr, argv.data(), environ);
-  if (spawnRC != 0) {
-    return -120 - spawnRC;
+    argv.push_back(arg.c_str());
   }
 
-  int status = 0;
-  if (waitpid(pid, &status, 0) < 0) {
-    return -160 - errno;
-  }
-  if (!WIFEXITED(status)) {
-    return -180;
-  }
-  return WEXITSTATUS(status);
+  return swift::performFrontend(
+      argv,
+      "swift-frontend-embedded",
+      reinterpret_cast<void *>(&swift::performFrontend),
+      nullptr);
 }
 
 int emitWithFrontend(
@@ -77,16 +64,12 @@ int emitWithFrontend(
     return -3;
   }
 
-  const std::string frontendPath = resolveFrontendPath();
-  if (frontendPath.empty()) {
-    return -101;
-  }
-
-  char tempTemplate[] = "/tmp/swift-frontend-XXXXXX";
+  char tempTemplate[] = "/tmp/swift-frontend-embedded-XXXXXX";
   char *tempDirRaw = mkdtemp(tempTemplate);
   if (!tempDirRaw) {
     return -102;
   }
+
   const std::filesystem::path tempDir(tempDirRaw);
   const std::filesystem::path inputFile = tempDir / "input.swift";
 
@@ -100,7 +83,7 @@ int emitWithFrontend(
   }
 
   std::vector<std::string> args = {
-      frontendPath,
+      "-frontend",
       emitSIL ? "-emit-silgen" : "-emit-ir",
       inputFile.string(),
       "-module-name",
@@ -122,7 +105,13 @@ int emitWithFrontend(
     args.emplace_back(sdk);
   }
 
-  const int rc = runFrontend(args);
+  const std::string resourceDir = resolveResourceDir();
+  if (!resourceDir.empty()) {
+    args.emplace_back("-resource-dir");
+    args.emplace_back(resourceDir);
+  }
+
+  const int rc = performFrontendInvocation(args);
   std::filesystem::remove_all(tempDir);
   return rc == 0 ? 0 : -200 - rc;
 }
