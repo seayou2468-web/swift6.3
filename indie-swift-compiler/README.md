@@ -27,19 +27,6 @@ indie-swift-compiler/
     MiniSwiftCompilerCore/
       MiniCompiler.swift
       CompilerBridge.swift
-  Scripts/
-    extract_swift_pipeline.sh
-    prepare_irgen_source_bundle.sh
-    prepare_sil_source_bundle.sh
-    analyze_irgen_dependencies.sh
-    analyze_sil_dependencies.sh
-    verify_swift_siloptimizer_to_irgen_pipeline.sh
-    build_extracted_irgen_lib.sh
-    build_extracted_sil_optimizer_lib.sh
-    bootstrap_minimal_toolchain_repos.sh
-    build_swift_compiler_xcframework.sh
-    build_compiler_rt_xcframework.sh
-    build_unified_toolchain_xcframework.sh
   Tools/
     generate_minimal_update_checkout_config.py
     generate_profiled_update_checkout_config.py
