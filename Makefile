@@ -87,9 +87,10 @@ collect-clang-artifacts: $(TOOLCHAIN_STAMP)
 	@if [ -d "$(INSTALLED_TOOLCHAIN_ROOT)/usr/lib/clang" ]; then \
 		rsync -a "$(INSTALLED_TOOLCHAIN_ROOT)/usr/lib/clang" "$(CLANG_ARTIFACT_DIR)/lib/"; \
 	fi
-	@find "$(INSTALLED_TOOLCHAIN_ROOT)/usr/lib" -maxdepth 1 \
-		\( -name 'libclang*' -o -name 'libc++*' -o -name 'libc++abi*' -o -name 'libunwind*' \) \
-		-exec cp -f {} "$(CLANG_ARTIFACT_DIR)/lib/" \;
+	@cd "$(INSTALLED_TOOLCHAIN_ROOT)/usr" && { \
+		find lib -type f \
+			\( -name 'libclang*' -o -name 'libc++*' -o -name 'libc++abi*' -o -name 'libunwind*' \) -print0; \
+	} | rsync --from0 --files-from=- -a . "$(CLANG_ARTIFACT_DIR)/"
 
 package-llvm-xcframework: $(TOOLCHAIN_STAMP)
 	$(call log_info,packaging LLVM static libraries into $(LLVM_XCFRAMEWORK_NAME))
@@ -122,7 +123,7 @@ package-clang-xcframework: collect-clang-artifacts
 	@if [ -d "$(CLANG_ARTIFACT_DIR)/include/c++" ]; then \
 		rsync -a "$(CLANG_ARTIFACT_DIR)/include/c++" "$(CLANG_XCFRAMEWORK_HEADERS_DIR)/"; \
 	fi
-	@clang_libs=( $$(find "$(CLANG_ARTIFACT_DIR)/lib" -maxdepth 1 -name "*.a" -print | sort) ); \
+	@clang_libs=( $$(find "$(CLANG_ARTIFACT_DIR)/lib" -type f -name "*.a" -print | sort) ); \
 	if [[ $${#clang_libs[@]} -eq 0 ]]; then \
 		echo "error: no Clang/C++ static libraries found under $(CLANG_ARTIFACT_DIR)/lib"; \
 		exit 1; \
