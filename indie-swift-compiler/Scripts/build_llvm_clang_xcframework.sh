@@ -24,6 +24,7 @@ SIM_PACKAGE_DIR="$SIM_BUILD/package"
 
 require_darwin_arm64_host
 clear_inherited_apple_build_env
+configure_host_apple_cmake_flags
 configure_optional_compiler_launcher_flags
 
 rm -rf "$BUILD_ROOT"
@@ -84,9 +85,6 @@ build_native_llvm_tablegen_tools() {
     -B "$build_dir"
     -G Ninja
     -DLLVM_ENABLE_PROJECTS="clang"
-    -DCMAKE_SYSTEM_NAME=Darwin
-    -DCMAKE_OSX_SYSROOT=macosx
-    -DCMAKE_OSX_ARCHITECTURES="$APPLE_ARCH"
     -DCMAKE_BUILD_TYPE=Release
     -DLLVM_TARGETS_TO_BUILD="$LLVM_ARCH"
     -DCLANG_INCLUDE_TESTS=OFF
@@ -111,6 +109,7 @@ build_native_llvm_tablegen_tools() {
     -DLLVM_ENABLE_TERMINFO=OFF
     -DLLVM_ENABLE_LIBXML2=OFF
   )
+  cmake_args+=("${APPLE_HOST_STAGE_CMAKE_FLAGS[@]}")
   if [[ ${#CMAKE_LAUNCHER_FLAGS[@]} -gt 0 ]]; then
     cmake_args+=("${CMAKE_LAUNCHER_FLAGS[@]}")
   fi
@@ -164,16 +163,14 @@ prepare_llvm_package_artifacts() {
 
 # iOS Device
 build_native_llvm_tablegen_tools "$LLVM_PROJECT/llvm" "$NATIVE_BUILD"
+configure_cross_apple_cmake_flags iphoneos
 ios_cmake_args=(
   -S "$LLVM_PROJECT/llvm"
   -B "$IOS_BUILD"
   -G Ninja
   -DLLVM_ENABLE_PROJECTS="clang;lld"
-  -DCMAKE_SYSTEM_NAME=iOS
   -DCMAKE_BUILD_TYPE=Release
   -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0
-  -DCMAKE_OSX_SYSROOT=iphoneos
-  -DCMAKE_OSX_ARCHITECTURES="$APPLE_ARCH"
   -DCMAKE_INSTALL_PREFIX="$IOS_PREFIX"
   -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
   -DLLVM_TARGETS_TO_BUILD="$LLVM_ARCH"
@@ -204,6 +201,7 @@ ios_cmake_args=(
   -DLLVM_INCLUDE_TESTS=OFF
   -DLLVM_INCLUDE_BENCHMARKS=OFF
 )
+ios_cmake_args+=("${APPLE_CROSS_STAGE_CMAKE_FLAGS[@]}")
 if [[ ${#CMAKE_LAUNCHER_FLAGS[@]} -gt 0 ]]; then
   ios_cmake_args+=("${CMAKE_LAUNCHER_FLAGS[@]}")
 fi
@@ -226,16 +224,14 @@ prepare_llvm_package_artifacts \
 
 if [[ "$IOS_DEVICE_ONLY" != "1" ]]; then
   # iOS Simulator
+  configure_cross_apple_cmake_flags iphonesimulator
   sim_cmake_args=(
     -S "$LLVM_PROJECT/llvm"
     -B "$SIM_BUILD"
     -G Ninja
     -DLLVM_ENABLE_PROJECTS="clang;lld"
-    -DCMAKE_SYSTEM_NAME=iOS
     -DCMAKE_BUILD_TYPE=Release
     -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0
-    -DCMAKE_OSX_SYSROOT=iphonesimulator
-    -DCMAKE_OSX_ARCHITECTURES="$APPLE_ARCH"
     -DCMAKE_INSTALL_PREFIX="$SIM_PREFIX"
     -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
     -DLLVM_TARGETS_TO_BUILD="$LLVM_ARCH"
@@ -266,6 +262,7 @@ if [[ "$IOS_DEVICE_ONLY" != "1" ]]; then
     -DLLVM_INCLUDE_TESTS=OFF
     -DLLVM_INCLUDE_BENCHMARKS=OFF
   )
+  sim_cmake_args+=("${APPLE_CROSS_STAGE_CMAKE_FLAGS[@]}")
   if [[ ${#CMAKE_LAUNCHER_FLAGS[@]} -gt 0 ]]; then
     sim_cmake_args+=("${CMAKE_LAUNCHER_FLAGS[@]}")
   fi

@@ -22,6 +22,7 @@ SIM_UNIFIED_LIB="$SIM_PREFIX/lib/libSwiftFrontend.a"
 
 require_darwin_arm64_host
 clear_inherited_apple_build_env
+configure_cross_apple_cmake_flags iphoneos
 configure_optional_compiler_launcher_flags
 
 rm -rf "$BUILD_ROOT" "$FRAMEWORK_OUT"
@@ -63,13 +64,11 @@ ios_cmake_args=(
   -S "$BUILD_ROOT"
   -B "$IOS_BUILD"
   -G Ninja
-  -DCMAKE_SYSTEM_NAME=iOS
-  -DCMAKE_OSX_SYSROOT=iphoneos
-  -DCMAKE_OSX_ARCHITECTURES="$APPLE_ARCH"
   -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0
   -DCMAKE_BUILD_TYPE=Release
   -DCMAKE_INSTALL_PREFIX="$IOS_PREFIX"
 )
+ios_cmake_args+=("${APPLE_CROSS_STAGE_CMAKE_FLAGS[@]}")
 if [[ ${#CMAKE_LAUNCHER_FLAGS[@]} -gt 0 ]]; then
   ios_cmake_args+=("${CMAKE_LAUNCHER_FLAGS[@]}")
 fi
@@ -79,17 +78,16 @@ cmake --install "$IOS_BUILD"
 mv "$IOS_UNIFIED_LIB" "$IOS_ADAPTER_LIB"
 libtool -static -o "$IOS_UNIFIED_LIB" "$IOS_ADAPTER_LIB" "$EMBEDDED_IOS_LIB"
 
+configure_cross_apple_cmake_flags iphonesimulator
 sim_cmake_args=(
   -S "$BUILD_ROOT"
   -B "$SIM_BUILD"
   -G Ninja
-  -DCMAKE_SYSTEM_NAME=iOS
-  -DCMAKE_OSX_SYSROOT=iphonesimulator
-  -DCMAKE_OSX_ARCHITECTURES="$APPLE_ARCH"
   -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0
   -DCMAKE_BUILD_TYPE=Release
   -DCMAKE_INSTALL_PREFIX="$SIM_PREFIX"
 )
+sim_cmake_args+=("${APPLE_CROSS_STAGE_CMAKE_FLAGS[@]}")
 if [[ ${#CMAKE_LAUNCHER_FLAGS[@]} -gt 0 ]]; then
   sim_cmake_args+=("${CMAKE_LAUNCHER_FLAGS[@]}")
 fi

@@ -11,6 +11,7 @@ OUT_DIR="$ROOT_DIR/Artifacts"
 OUT_XC="$OUT_DIR/CompilerRT.xcframework"
 IOS_DEVICE_ONLY="${IOS_DEVICE_ONLY:-1}"
 
+NATIVE_BUILD="$WORK_DIR/native-host"
 IOS_BUILD="$WORK_DIR/ios"
 SIM_BUILD="$WORK_DIR/sim"
 IOS_INSTALL="$IOS_BUILD/install"
@@ -26,6 +27,7 @@ require_tool libtool
 
 require_darwin_arm64_host
 clear_inherited_apple_build_env
+configure_host_apple_cmake_flags
 configure_optional_compiler_launcher_flags
 
 mkdir -p "$WORK_DIR" "$OUT_DIR"
@@ -36,27 +38,65 @@ if [[ ! -d "$LLVM_SRC_DIR/llvm" ]]; then
   exit 1
 fi
 
-rm -rf "$IOS_BUILD" "$SIM_BUILD" "$IOS_HEADERS" "$SIM_HEADERS" "$OUT_XC"
-mkdir -p "$IOS_BUILD" "$IOS_HEADERS"
+rm -rf "$NATIVE_BUILD" "$IOS_BUILD" "$SIM_BUILD" "$IOS_HEADERS" "$SIM_HEADERS" "$OUT_XC"
+mkdir -p "$NATIVE_BUILD" "$IOS_BUILD" "$IOS_HEADERS"
 if [[ "$IOS_DEVICE_ONLY" != "1" ]]; then
   mkdir -p "$SIM_BUILD" "$SIM_HEADERS"
 fi
+
+build_native_llvm_tablegen_tools() {
+  local llvm_source_dir="$1"
+  local build_dir="$2"
+  local -a cmake_args=(
+    -S "$llvm_source_dir"
+    -B "$build_dir"
+    -G Ninja
+    -DLLVM_ENABLE_PROJECTS="clang"
+    -DCMAKE_BUILD_TYPE=Release
+    -DLLVM_TARGETS_TO_BUILD="$LLVM_ARCH"
+    -DCLANG_INCLUDE_TESTS=OFF
+    -DCLANG_BUILD_TOOLS=ON
+    -DCLANG_ENABLE_STATIC_ANALYZER=OFF
+    -DCLANG_ENABLE_ARCMT=OFF
+    -DLLVM_INCLUDE_DOCS=OFF
+    -DLLVM_INCLUDE_EXAMPLES=OFF
+    -DLLVM_INCLUDE_TESTS=OFF
+    -DLLVM_INCLUDE_BENCHMARKS=OFF
+    -DLLVM_BUILD_TOOLS=ON
+    -DLLVM_BUILD_UTILS=ON
+    -DLLVM_INCLUDE_TOOLS=ON
+    -DLLVM_INCLUDE_UTILS=ON
+    -DBUILD_SHARED_LIBS=OFF
+    -DLLVM_ENABLE_ZLIB=OFF
+    -DLLVM_ENABLE_ZSTD=OFF
+    -DLLVM_ENABLE_THREADS=ON
+    -DLLVM_ENABLE_UNWIND_TABLES=OFF
+    -DLLVM_ENABLE_EH=OFF
+    -DLLVM_ENABLE_RTTI=ON
+    -DLLVM_ENABLE_TERMINFO=OFF
+    -DLLVM_ENABLE_LIBXML2=OFF
+  )
+  cmake_args+=("${APPLE_HOST_STAGE_CMAKE_FLAGS[@]}")
+  if [[ ${#CMAKE_LAUNCHER_FLAGS[@]} -gt 0 ]]; then
+    cmake_args+=("${CMAKE_LAUNCHER_FLAGS[@]}")
+  fi
+  cmake "${cmake_args[@]}"
+  cmake_build "$build_dir" --target llvm-tblgen clang-tblgen
+}
 
 configure_compiler_rt() {
   local build_dir="$1"
   local install_dir="$2"
   local sysroot="$3"
   local archs="$4"
+  configure_cross_apple_cmake_flags "$sysroot"
   local -a cmake_args=(
     -S "$LLVM_SRC_DIR/llvm"
     -B "$build_dir"
     -G Ninja
     -DLLVM_ENABLE_PROJECTS="clang"
     -DLLVM_ENABLE_RUNTIMES="compiler-rt"
-    -DCMAKE_SYSTEM_NAME=iOS
     -DCMAKE_BUILD_TYPE=Release
-    -DCMAKE_OSX_SYSROOT="$sysroot"
-    -DCMAKE_OSX_ARCHITECTURES="$archs"
     -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0
     -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
     -DCMAKE_INSTALL_PREFIX="$install_dir"
@@ -77,6 +117,13 @@ configure_compiler_rt() {
     -DCOMPILER_RT_ENABLE_WATCHOS=FALSE
     -DCOMPILER_RT_ENABLE_TVOS=FALSE
     -DCOMPILER_RT_ENABLE_XROS=FALSE
+  )
+  cmake_args+=("${APPLE_CROSS_STAGE_CMAKE_FLAGS[@]}")
+  cmake_args+=(
+    "-DLLVM_TABLEGEN=$NATIVE_BUILD/bin/llvm-tblgen"
+    "-DCLANG_TABLEGEN=$NATIVE_BUILD/bin/clang-tblgen"
+    "-DLLVM_NATIVE_TOOL_DIR=$NATIVE_BUILD/bin"
+    "-DLLVM_NATIVE_BUILD=$NATIVE_BUILD"
   )
   if [[ ${#CMAKE_LAUNCHER_FLAGS[@]} -gt 0 ]]; then
     cmake_args+=("${CMAKE_LAUNCHER_FLAGS[@]}")
@@ -117,6 +164,7 @@ collect_compiler_rt() {
   libtool -static -o "$out_lib" "${libs[@]}"
 }
 
+build_native_llvm_tablegen_tools "$LLVM_SRC_DIR/llvm" "$NATIVE_BUILD"
 configure_compiler_rt "$IOS_BUILD" "$IOS_INSTALL" iphoneos "$APPLE_ARCH"
 build_compiler_rt "$IOS_BUILD"
 cmake --install "$IOS_BUILD"

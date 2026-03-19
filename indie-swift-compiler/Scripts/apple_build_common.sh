@@ -6,6 +6,8 @@ HOST_OS="${HOST_OS:-$(uname -s)}"
 HOST_ARCH="${HOST_ARCH:-$(uname -m)}"
 BUILD_JOBS="${BUILD_JOBS:-$(sysctl -n hw.logicalcpu 2>/dev/null || echo 8)}"
 declare -a CMAKE_LAUNCHER_FLAGS=()
+declare -a APPLE_HOST_STAGE_CMAKE_FLAGS=()
+declare -a APPLE_CROSS_STAGE_CMAKE_FLAGS=()
 
 require_darwin_arm64_host() {
   if [[ "$HOST_OS" != "Darwin" ]]; then
@@ -36,6 +38,44 @@ clear_inherited_apple_build_env() {
   unset TVOS_DEPLOYMENT_TARGET
   unset WATCHOS_DEPLOYMENT_TARGET
   unset XROS_DEPLOYMENT_TARGET
+  unset SYSROOT
+  unset TOOLCHAINS
+  unset DEVELOPER_DIR
+  unset CPATH
+  unset C_INCLUDE_PATH
+  unset CPLUS_INCLUDE_PATH
+  unset OBJC_INCLUDE_PATH
+  unset LIBRARY_PATH
+  unset DYLD_LIBRARY_PATH
+  unset DYLD_FRAMEWORK_PATH
+}
+
+configure_host_apple_cmake_flags() {
+  APPLE_HOST_STAGE_CMAKE_FLAGS=(
+    "-DCMAKE_SYSTEM_NAME=Darwin"
+    "-DCMAKE_OSX_SYSROOT=macosx"
+    "-DCMAKE_OSX_ARCHITECTURES=$APPLE_ARCH"
+    "-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER"
+    "-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=NEVER"
+    "-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=NEVER"
+    "-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=NEVER"
+  )
+}
+
+configure_cross_apple_cmake_flags() {
+  local sysroot="$1"
+  APPLE_CROSS_STAGE_CMAKE_FLAGS=(
+    "-DCMAKE_SYSTEM_NAME=iOS"
+    "-DCMAKE_OSX_SYSROOT=$sysroot"
+    "-DCMAKE_OSX_ARCHITECTURES=$APPLE_ARCH"
+    "-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER"
+    "-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY"
+    "-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY"
+    "-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY"
+    "-DCMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH=OFF"
+    "-DCMAKE_FIND_USE_CMAKE_SYSTEM_PATH=ON"
+    "-DCMAKE_FIND_USE_INSTALL_PREFIX=OFF"
+  )
 }
 
 configure_optional_compiler_launcher_flags() {

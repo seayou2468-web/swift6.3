@@ -35,9 +35,10 @@ LLVM_ARCH="AArch64"
 HOST_OS="$(uname -s)"
 HOST_ARCH="$(uname -m)"
 BUILD_JOBS="${BUILD_JOBS:-$(sysctl -n hw.logicalcpu 2>/dev/null || echo 8)}"
-declare -a APPLE_LINKER_CMAKE_FLAGS=()
 declare -a NATIVE_LLVM_CMAKE_FLAGS=()
 declare -a OPTIONAL_COMPILER_LAUNCHER_FLAGS=()
+declare -a APPLE_HOST_STAGE_CMAKE_FLAGS=()
+declare -a APPLE_CROSS_STAGE_CMAKE_FLAGS=()
 
 require_tool() {
   command -v "$1" >/dev/null 2>&1 || { echo "必要ツール不足: $1"; exit 1; }
@@ -80,13 +81,43 @@ clear_inherited_apple_build_env() {
   unset TVOS_DEPLOYMENT_TARGET
   unset WATCHOS_DEPLOYMENT_TARGET
   unset XROS_DEPLOYMENT_TARGET
+  unset SYSROOT
+  unset TOOLCHAINS
+  unset DEVELOPER_DIR
+  unset CPATH
+  unset C_INCLUDE_PATH
+  unset CPLUS_INCLUDE_PATH
+  unset OBJC_INCLUDE_PATH
+  unset LIBRARY_PATH
+  unset DYLD_LIBRARY_PATH
+  unset DYLD_FRAMEWORK_PATH
 }
 
-configure_apple_linker_cmake_flags() {
-  APPLE_LINKER_CMAKE_FLAGS=(
-    "-DCMAKE_EXE_LINKER_FLAGS=-Wl,-dead_strip"
-    "-DCMAKE_SHARED_LINKER_FLAGS=-Wl,-dead_strip"
-    "-DCMAKE_MODULE_LINKER_FLAGS=-Wl,-dead_strip"
+configure_host_apple_cmake_flags() {
+  APPLE_HOST_STAGE_CMAKE_FLAGS=(
+    "-DCMAKE_SYSTEM_NAME=Darwin"
+    "-DCMAKE_OSX_SYSROOT=macosx"
+    "-DCMAKE_OSX_ARCHITECTURES=$APPLE_ARCH"
+    "-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER"
+    "-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=NEVER"
+    "-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=NEVER"
+    "-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=NEVER"
+  )
+}
+
+configure_cross_apple_cmake_flags() {
+  local sysroot="$1"
+  APPLE_CROSS_STAGE_CMAKE_FLAGS=(
+    "-DCMAKE_SYSTEM_NAME=iOS"
+    "-DCMAKE_OSX_SYSROOT=$sysroot"
+    "-DCMAKE_OSX_ARCHITECTURES=$APPLE_ARCH"
+    "-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER"
+    "-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY"
+    "-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY"
+    "-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY"
+    "-DCMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH=OFF"
+    "-DCMAKE_FIND_USE_CMAKE_SYSTEM_PATH=ON"
+    "-DCMAKE_FIND_USE_INSTALL_PREFIX=OFF"
   )
 }
 
@@ -181,9 +212,6 @@ build_native_llvm_tablegen_tools() {
     -B "$build_dir"
     -G Ninja
     -DLLVM_ENABLE_PROJECTS="clang"
-    -DCMAKE_SYSTEM_NAME=Darwin
-    -DCMAKE_OSX_SYSROOT=macosx
-    -DCMAKE_OSX_ARCHITECTURES="$APPLE_ARCH"
     -DCMAKE_BUILD_TYPE=Release
     -DLLVM_TARGETS_TO_BUILD="$LLVM_ARCH"
     -DCLANG_INCLUDE_TESTS=OFF
@@ -208,6 +236,7 @@ build_native_llvm_tablegen_tools() {
     -DLLVM_ENABLE_TERMINFO=OFF
     -DLLVM_ENABLE_LIBXML2=OFF
   )
+  cmake_args+=("${APPLE_HOST_STAGE_CMAKE_FLAGS[@]}")
   if [[ ${#OPTIONAL_COMPILER_LAUNCHER_FLAGS[@]} -gt 0 ]]; then
     cmake_args+=("${OPTIONAL_COMPILER_LAUNCHER_FLAGS[@]}")
   fi
@@ -335,18 +364,16 @@ mkdir -p "$LLVM_NATIVE_BUILD" "$LLVM_IOS_BUILD" "$SWIFT_FRAMEWORK_BUILD" "$SWIFT
 echo "[1/4] Build LLVM/Clang for iOS arm64"
 require_darwin_host
 clear_inherited_apple_build_env
-configure_apple_linker_cmake_flags
+configure_host_apple_cmake_flags
 configure_optional_compiler_launcher_flags
 build_native_llvm_tablegen_tools "$LLVM_SRC_DIR/llvm" "$LLVM_NATIVE_BUILD"
+configure_cross_apple_cmake_flags iphoneos
 llvm_ios_cmake_args=(
   -S "$LLVM_SRC_DIR/llvm"
   -B "$LLVM_IOS_BUILD"
   -G Ninja
   -DLLVM_ENABLE_PROJECTS="clang;lld"
-  -DCMAKE_SYSTEM_NAME=iOS
   -DCMAKE_BUILD_TYPE=Release
-  -DCMAKE_OSX_SYSROOT=iphoneos
-  -DCMAKE_OSX_ARCHITECTURES="$APPLE_ARCH"
   -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0
   -DCMAKE_INSTALL_PREFIX="$LLVM_IOS_INSTALL"
   -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
@@ -380,11 +407,11 @@ llvm_ios_cmake_args=(
   -DLLVM_INCLUDE_TESTS=OFF
   -DLLVM_INCLUDE_BENCHMARKS=OFF
 )
+llvm_ios_cmake_args+=("${APPLE_CROSS_STAGE_CMAKE_FLAGS[@]}")
 if [[ ${#OPTIONAL_COMPILER_LAUNCHER_FLAGS[@]} -gt 0 ]]; then
   llvm_ios_cmake_args+=("${OPTIONAL_COMPILER_LAUNCHER_FLAGS[@]}")
 fi
 llvm_ios_cmake_args+=("${NATIVE_LLVM_CMAKE_FLAGS[@]}")
-llvm_ios_cmake_args+=("${APPLE_LINKER_CMAKE_FLAGS[@]}")
 cmake "${llvm_ios_cmake_args[@]}"
 build_llvm_clang_libraries "$LLVM_IOS_BUILD"
 cmake --install "$LLVM_IOS_BUILD"
@@ -413,17 +440,16 @@ install(TARGETS SwiftFrontendAdapter ARCHIVE DESTINATION lib)
 install(FILES $ROOT_DIR/Native/SwiftIRGenAdapter/SwiftIRGenAdapter.h DESTINATION include)
 CMAKE
 
+configure_cross_apple_cmake_flags iphoneos
 swift_frontend_ios_cmake_args=(
   -S "$SWIFT_FRONTEND_SRC"
   -B "$SWIFT_FRONTEND_IOS_BUILD"
   -G Ninja
-  -DCMAKE_SYSTEM_NAME=iOS
-  -DCMAKE_OSX_SYSROOT=iphoneos
-  -DCMAKE_OSX_ARCHITECTURES="$APPLE_ARCH"
   -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0
   -DCMAKE_BUILD_TYPE=Release
   -DCMAKE_INSTALL_PREFIX="$SWIFT_FRONTEND_IOS_INSTALL"
 )
+swift_frontend_ios_cmake_args+=("${APPLE_CROSS_STAGE_CMAKE_FLAGS[@]}")
 if [[ ${#OPTIONAL_COMPILER_LAUNCHER_FLAGS[@]} -gt 0 ]]; then
   swift_frontend_ios_cmake_args+=("${OPTIONAL_COMPILER_LAUNCHER_FLAGS[@]}")
 fi
