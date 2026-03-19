@@ -8,6 +8,7 @@ on:
       - 'indie-swift-compiler/Makefile'
       - 'indie-swift-compiler/Config/minimal-update-checkout-config.json'
       - 'indie-swift-compiler/Scripts/bootstrap_minimal_toolchain_repos.sh'
+      - 'indie-swift-compiler/Tools/sync_toolchain_repos.py'
 
 jobs:
   build-ios-llvm-clang:
@@ -18,8 +19,7 @@ jobs:
         working-directory: /Users/runner/work/swift6.3/swift6.3
     env:
       SWIFT_SCHEME: release/6.3
-      SWIFT_WORKSPACE: /Users/runner/work/swift6.3/swift6.3/.ci/update-checkout
-      LLVM_VER: 21.1.6
+      TOOLCHAIN_WORKSPACE: /Users/runner/work/swift6.3/swift6.3/indie-swift-compiler/.toolchain-workspace
 
     steps:
       - name: Checkout repository
@@ -35,24 +35,15 @@ jobs:
           brew update
           brew install cmake ninja
 
-      - name: Checkout Swift update-checkout workspace
+      - name: Fetch llvm-project with indie update-checkout flow
         run: |
-          rm -rf "$SWIFT_WORKSPACE"
-          mkdir -p "$SWIFT_WORKSPACE"
-          git clone --depth 1 --branch "$SWIFT_SCHEME" https://github.com/swiftlang/swift.git "$SWIFT_WORKSPACE/swift"
-
-      - name: Fetch llvm-project with update-checkout
-        working-directory: /Users/runner/work/swift6.3/swift6.3/.ci/update-checkout/swift
-        run: |
-          python3 utils/update-checkout \
-            --clone \
-            --scheme "$SWIFT_SCHEME" \
-            --config /Users/runner/work/swift6.3/swift6.3/indie-swift-compiler/Config/minimal-update-checkout-config.json
+          rm -rf "$TOOLCHAIN_WORKSPACE"
+          indie-swift-compiler/Scripts/bootstrap_minimal_toolchain_repos.sh "$SWIFT_SCHEME" "$TOOLCHAIN_WORKSPACE"
 
       - name: Verify update-checkout output
         run: |
-          test -d "$SWIFT_WORKSPACE/llvm-project"
-          test -d "$SWIFT_WORKSPACE/llvm-project/llvm"
+          test -d "$TOOLCHAIN_WORKSPACE/llvm-project"
+          test -d "$TOOLCHAIN_WORKSPACE/llvm-project/llvm"
 
       - name: Build LLVM and Clang xcframeworks
         working-directory: /Users/runner/work/swift6.3/swift6.3/indie-swift-compiler

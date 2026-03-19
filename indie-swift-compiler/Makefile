@@ -5,7 +5,7 @@ OS_VER := 15.0
 LLVM_ARCH := AArch64
 APPLE_ARCH := arm64
 LLVM_SRC_DIR := llvm-project-$(LLVM_VER).src
-LLVM_FALLBACK_SRC_DIR := ../.ci/update-checkout/llvm-project
+LLVM_FALLBACK_SRC_DIR := .toolchain-workspace/llvm-project
 LLVM_CHECKOUT_DIR := llvm
 
 # Cmake configurations
@@ -50,7 +50,7 @@ $(LLVM_SRC_DIR):
 		cp -R "$(LLVM_FALLBACK_SRC_DIR)" "$(LLVM_SRC_DIR)"; \
 	else \
 		echo "llvm source checkout not found: $(LLVM_FALLBACK_SRC_DIR)"; \
-		echo "run the workflow's update-checkout step or place llvm-project there first"; \
+		echo "run indie-swift-compiler/Scripts/bootstrap_minimal_toolchain_repos.sh first"; \
 		exit 1; \
 	fi
 
