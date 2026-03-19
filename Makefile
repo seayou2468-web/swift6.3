@@ -14,9 +14,13 @@ INSTALL_DESTDIR ?= $(ARTIFACTS_DIR)/install
 INSTALL_TOOLCHAIN_DIR ?= /Library/Developer/Toolchains/SwiftMinimalIOS.xctoolchain
 INSTALLED_TOOLCHAIN_ROOT := $(INSTALL_DESTDIR)$(INSTALL_TOOLCHAIN_DIR)
 CLANG_ARTIFACT_DIR ?= $(ARTIFACTS_DIR)/clang-ios-minimal
+XCFRAMEWORK_NAME ?= ClangCxxSupport.xcframework
+XCFRAMEWORK_HEADERS_DIR ?= $(ARTIFACTS_DIR)/clang-ios-minimal-headers
+XCFRAMEWORK_LIB ?= $(ARTIFACTS_DIR)/libClangCxxSupport.a
+XCFRAMEWORK_PATH ?= $(ARTIFACTS_DIR)/$(XCFRAMEWORK_NAME)
 TOOLCHAIN_STAMP := $(ARTIFACTS_DIR)/.$(BUILD_SUBDIR)-installed
 
-.PHONY: all swift-ios-minimal update-checkout shallowen-checkouts swift-toolchain collect-clang-artifacts clean
+.PHONY: all swift-ios-minimal update-checkout shallowen-checkouts swift-toolchain collect-clang-artifacts package-clang-xcframework clean
 
 all: swift-ios-minimal
 
@@ -24,7 +28,7 @@ define log_info
 	@echo "\033[32m\033[1m[*] \033[0m\033[32m$(1)\033[0m"
 endef
 
-swift-ios-minimal: collect-clang-artifacts
+swift-ios-minimal: package-clang-xcframework
 
 update-checkout:
 	$(call log_info,syncing Swift 6.3 checkout dependencies)
@@ -77,7 +81,28 @@ collect-clang-artifacts: $(TOOLCHAIN_STAMP)
 	fi
 	@find "$(INSTALLED_TOOLCHAIN_ROOT)/usr/lib" -maxdepth 1 \
 		\( -name 'libclang*' -o -name 'libc++*' -o -name 'libc++abi*' -o -name 'libunwind*' \) \
-		-exec cp -f {} "$(CLANG_ARTIFACT_DIR)/lib/" \\;
+		-exec cp -f {} "$(CLANG_ARTIFACT_DIR)/lib/" \;
+
+package-clang-xcframework: collect-clang-artifacts
+	$(call log_info,packaging collected clang and C++ artifacts into $(XCFRAMEWORK_NAME))
+	@rm -rf "$(XCFRAMEWORK_HEADERS_DIR)" "$(XCFRAMEWORK_LIB)" "$(XCFRAMEWORK_PATH)"
+	@mkdir -p "$(XCFRAMEWORK_HEADERS_DIR)"
+	@if [ -d "$(CLANG_ARTIFACT_DIR)/include/clang-c" ]; then \
+		rsync -a "$(CLANG_ARTIFACT_DIR)/include/clang-c" "$(XCFRAMEWORK_HEADERS_DIR)/"; \
+	fi
+	@if [ -d "$(CLANG_ARTIFACT_DIR)/include/c++" ]; then \
+		rsync -a "$(CLANG_ARTIFACT_DIR)/include/c++" "$(XCFRAMEWORK_HEADERS_DIR)/"; \
+	fi
+	@static_libs=( $$(find "$(CLANG_ARTIFACT_DIR)/lib" -maxdepth 1 -name "*.a" -print | sort) ); \
+	if [[ $${#static_libs[@]} -eq 0 ]]; then \
+		echo "error: no static libraries found under $(CLANG_ARTIFACT_DIR)/lib for xcframework packaging"; \
+		exit 1; \
+	fi; \
+	libtool -static -o "$(XCFRAMEWORK_LIB)" "$${static_libs[@]}"; \
+	xcodebuild -create-xcframework \
+		-library "$(XCFRAMEWORK_LIB)" \
+		-headers "$(XCFRAMEWORK_HEADERS_DIR)" \
+		-output "$(XCFRAMEWORK_PATH)"
 
 clean:
 	$(call log_info,cleaning generated artifacts)
