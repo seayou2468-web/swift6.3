@@ -9,6 +9,8 @@ SHALLOW_SUBMODULE_JOBS ?= 8
 
 BUILD_PRESET ?= ios_minimal_compiler_embedded
 BUILD_SUBDIR ?= ios_minimal_compiler
+BUILD_JOBS ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 8)
+LIT_JOBS ?= $(BUILD_JOBS)
 ARTIFACTS_DIR ?= $(ROOT)/artifacts
 INSTALL_DESTDIR ?= $(ARTIFACTS_DIR)/install
 INSTALL_TOOLCHAIN_DIR ?= /Library/Developer/Toolchains/SwiftMinimalIOS.xctoolchain
@@ -65,7 +67,9 @@ $(TOOLCHAIN_STAMP): shallowen-checkouts
 	$(call log_info,building the minimal iOS Swift compiler toolchain with preset $(BUILD_PRESET))
 	mkdir -p "$(ARTIFACTS_DIR)"
 	rm -f "$(TOOLCHAIN_STAMP)"
-	cd "$(SWIFT_DIR)" && python3 ./utils/build-script \
+	cd "$(SWIFT_DIR)" && CMAKE_BUILD_PARALLEL_LEVEL="$(BUILD_JOBS)" python3 ./utils/build-script \
+		-j "$(BUILD_JOBS)" \
+		--lit-jobs "$(LIT_JOBS)" \
 		--preset=$(BUILD_PRESET) \
 		install_destdir="$(INSTALL_DESTDIR)" \
 		install_toolchain_dir="$(INSTALL_TOOLCHAIN_DIR)"

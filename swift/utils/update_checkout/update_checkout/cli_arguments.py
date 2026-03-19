@@ -47,11 +47,27 @@ repositories.
         )
         parser.add_argument(
             "--skip-history",
-            help="Skip histories when obtaining sources",
+            help="Skip histories when obtaining sources (default behavior)",
             action="store_true",
+            default=True,
         )
         parser.add_argument(
-            "--skip-tags", help="Skip tags when obtaining sources", action="store_true"
+            "--with-history",
+            help="Fetch full repository history instead of the default shallow clone/fetch behavior",
+            action="store_false",
+            dest="skip_history",
+        )
+        parser.add_argument(
+            "--skip-tags",
+            help="Skip tags when obtaining sources (default behavior)",
+            action="store_true",
+            default=True,
+        )
+        parser.add_argument(
+            "--with-tags",
+            help="Fetch tags instead of the default tagless clone/fetch behavior",
+            action="store_false",
+            dest="skip_tags",
         )
         parser.add_argument(
             "--skip-repository",

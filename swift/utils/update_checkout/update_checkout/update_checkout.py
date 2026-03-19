@@ -25,6 +25,100 @@ from .parallel_runner import ParallelRunner
 
 SCRIPT_FILE = os.path.abspath(__file__)
 SCRIPT_DIR = os.path.dirname(SCRIPT_FILE)
+SHALLOW_SUBMODULE_JOBS = os.environ.get("UPDATE_CHECKOUT_SUBMODULE_JOBS", "8")
+
+
+def build_fetch_args(
+    skip_history: bool, skip_tags: bool, recurse_submodules: bool = True
+) -> List[str]:
+    args = ["fetch"]
+    if recurse_submodules:
+        args.append("--recurse-submodules=yes")
+    if skip_history:
+        args += ["--depth", "1"]
+    if skip_tags:
+        args.append("--no-tags")
+    else:
+        args.append("--tags")
+    return args
+
+
+def configure_and_update_submodules(
+    repo_path: str,
+    skip_history: bool,
+    skip_tags: bool,
+    env: Optional[Dict[str, str]] = None,
+    echo: bool = False,
+    prefix: Optional[str] = None,
+):
+    gitmodules = os.path.join(repo_path, ".gitmodules")
+    if not os.path.isfile(gitmodules):
+        return
+
+    config_lines, _, _ = Git.run(
+        repo_path,
+        ["config", "--file", ".gitmodules", "--get-regexp", r"^submodule\..*\.path$"],
+        allow_non_zero_exit=True,
+        fatal=False,
+    )
+
+    for line in config_lines.splitlines():
+        key = line.split(" ", 1)[0].strip()
+        if not key:
+            continue
+        name = key[len("submodule.") : -len(".path")]
+        if skip_history:
+            Git.run(
+                repo_path,
+                ["config", f"submodule.{name}.shallow", "true"],
+                env=env,
+                echo=echo,
+                prefix=prefix,
+                allow_non_zero_exit=True,
+                fatal=False,
+            )
+
+    Git.run(
+        repo_path,
+        ["submodule", "sync", "--recursive"],
+        env=env,
+        echo=echo,
+        prefix=prefix,
+        allow_non_zero_exit=True,
+        fatal=False,
+    )
+
+    if skip_history:
+        Git.run(
+            repo_path,
+            ["submodule", "deinit", "-f", "--all"],
+            env=env,
+            echo=echo,
+            prefix=prefix,
+            allow_non_zero_exit=True,
+            fatal=False,
+        )
+        modules_dir = os.path.join(repo_path, ".git", "modules")
+        if os.path.isdir(modules_dir):
+            import shutil
+
+            shutil.rmtree(modules_dir, ignore_errors=True)
+
+    update_args = ["submodule", "update", "--init", "--recursive"]
+    if skip_history:
+        update_args += ["--depth", "1", "--recommend-shallow", "--jobs", SHALLOW_SUBMODULE_JOBS]
+    Git.run(repo_path, update_args, env=env, echo=echo, prefix=prefix)
+
+    if skip_tags:
+        Git.run(
+            repo_path,
+            ["submodule", "foreach", "--recursive", "git", "config", "remote.origin.tagOpt", "--no-tags"],
+            env=env,
+            echo=echo,
+            prefix=prefix,
+            allow_non_zero_exit=True,
+            fatal=False,
+        )
 
 
 class SkippedReason:
@@ -96,6 +190,8 @@ def get_branch_for_repo(
     scheme_name: str,
     scheme_map: Optional[Dict[str, str]],
     cross_repos_pr: Dict[str, str],
+    skip_history: bool,
+    skip_tags: bool,
 ):
     """Infer, fetch, and return a branch corresponding to a given PR, otherwise
     return a branch found in the config for this repository name.
@@ -133,12 +229,8 @@ def get_branch_for_repo(
             )
             Git.run(
                 repo_path,
-                [
-                    "fetch",
-                    "origin",
-                    "pull/{0}/merge:{1}".format(pr_id, repo_branch),
-                    "--tags",
-                ],
+                build_fetch_args(skip_history, skip_tags, recurse_submodules=False)
+                + ["origin", "pull/{0}/merge:{1}".format(pr_id, repo_branch)],
                 echo=True,
             )
     return repo_branch, cross_repo
@@ -156,6 +248,15 @@ def update_single_repository(pool_args: UpdateArguments):
         prefix = "[{0}] ".format(os.path.basename(repo_path)).ljust(40)
         if verbose:
             print(prefix + "Updating '" + repo_path + "'")
+        if pool_args.skip_tags:
+            Git.run(
+                repo_path,
+                ["config", "remote.origin.tagOpt", "--no-tags"],
+                echo=verbose,
+                prefix=prefix,
+                allow_non_zero_exit=True,
+                fatal=False,
+            )
 
         cross_repo = False
         checkout_target = None
@@ -169,6 +270,8 @@ def update_single_repository(pool_args: UpdateArguments):
                 pool_args.scheme_name,
                 pool_args.scheme_map,
                 pool_args.cross_repos_pr,
+                pool_args.skip_history,
+                pool_args.skip_tags,
             )
             if pool_args.timestamp:
                 checkout_target = find_rev_by_timestamp(
@@ -222,7 +325,7 @@ def update_single_repository(pool_args: UpdateArguments):
             except Exception:
                 Git.run(
                     repo_path,
-                    ["fetch", "--recurse-submodules=yes", "--tags"],
+                    build_fetch_args(pool_args.skip_history, pool_args.skip_tags),
                     echo=verbose,
                     prefix=prefix,
                 )
@@ -248,7 +351,7 @@ def update_single_repository(pool_args: UpdateArguments):
         # which branch was checked out during the fetch.
         Git.run(
             repo_path,
-            ["fetch", "--recurse-submodules=yes", "--tags"],
+            build_fetch_args(pool_args.skip_history, pool_args.skip_tags),
             echo=verbose,
             prefix=prefix,
         )
@@ -259,6 +362,13 @@ def update_single_repository(pool_args: UpdateArguments):
             full_target = full_target_name(repo_path, "origin", checkout_target)
             Git.run(
                 repo_path, ["reset", "--hard", full_target], echo=verbose, prefix=prefix
+            )
+            configure_and_update_submodules(
+                repo_path,
+                pool_args.skip_history,
+                pool_args.skip_tags,
+                echo=verbose,
+                prefix=prefix,
             )
             return
 
@@ -293,9 +403,10 @@ def update_single_repository(pool_args: UpdateArguments):
                 "to rebase."
             )
 
-        Git.run(
+        configure_and_update_submodules(
             repo_path,
-            ["submodule", "update", "--recursive"],
+            pool_args.skip_history,
+            pool_args.skip_tags,
             echo=verbose,
             prefix=prefix,
         )
@@ -506,7 +617,21 @@ def obtain_additional_swift_sources(pool_args: AdditionalSwiftSourcesArguments):
             ["--git-dir", src_path, "--work-tree", repo_path, "checkout", repo_branch],
             env=env,
         )
-    Git.run(repo_path, ["submodule", "update", "--recursive"], env=env)
+    if skip_tags:
+        Git.run(
+            repo_path,
+            ["config", "remote.origin.tagOpt", "--no-tags"],
+            env=env,
+            allow_non_zero_exit=True,
+            fatal=False,
+        )
+    configure_and_update_submodules(
+        repo_path,
+        args.skip_history,
+        args.skip_tags,
+        env=env,
+        echo=verbose,
+    )
 
 
 def obtain_all_additional_swift_sources(

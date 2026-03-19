@@ -9,10 +9,15 @@ on:
       - .github/workflows/build-ios-minimal-swift-compiler.yml
       - Makefile
       - swift/utils/build-presets.ini
+      - swift/utils/update_checkout/update_checkout/update_checkout.py
+      - swift/utils/update_checkout/update_checkout/cli_arguments.py
 
 jobs:
   build:
     runs-on: macos-latest
+    env:
+      XCODE_VERSION: 26.1.1
+      UPDATE_CHECKOUT_SCHEME: release/6.3
 
     steps:
       - name: Check out repository
@@ -21,13 +26,46 @@ jobs:
       - name: Select Xcode 26.1.1
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '26.1.1'
+          xcode-version: ${{ env.XCODE_VERSION }}
+
+      - name: Restore update-checkout source cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            cmark
+            llbuild
+            llvm-project
+            swift-*
+            sourcekit-lsp
+            indexstore-db
+            cmake
+            ninja
+            yams
+            curl
+            libxml2
+            zlib
+            brotli
+            wasi-libc
+            wasmkit
+          key: update-checkout-${{ runner.os }}-xcode-${{ env.XCODE_VERSION }}-${{ env.UPDATE_CHECKOUT_SCHEME }}-${{ hashFiles('swift/utils/update_checkout/update-checkout-config.json', 'swift/utils/update_checkout/update_checkout/update_checkout.py', 'swift/utils/update_checkout/update_checkout/cli_arguments.py') }}
+          restore-keys: |
+            update-checkout-${{ runner.os }}-xcode-${{ env.XCODE_VERSION }}-${{ env.UPDATE_CHECKOUT_SCHEME }}-
+
+      - name: Restore build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            build
+            artifacts/install
+          key: build-${{ runner.os }}-xcode-${{ env.XCODE_VERSION }}-${{ hashFiles('Makefile', 'swift/utils/build-presets.ini', '.github/workflows/build-ios-minimal-swift-compiler.yml', 'swift/utils/update_checkout/update_checkout/update_checkout.py', 'swift/utils/update_checkout/update_checkout/cli_arguments.py') }}
+          restore-keys: |
+            build-${{ runner.os }}-xcode-${{ env.XCODE_VERSION }}-
 
       - name: Update checkout to Swift 6.3-compatible revisions
-        run: python3 ./swift/utils/update-checkout --scheme release/6.3 --clone --skip-history --skip-tags --reset-to-remote
+        run: python3 ./swift/utils/update-checkout --scheme "${UPDATE_CHECKOUT_SCHEME}" --clone --reset-to-remote
 
       - name: Build the minimal iOS Swift compiler configuration
-        run: "make swift-ios-minimal UPDATE_CHECKOUT=:"
+        run: "make swift-ios-minimal UPDATE_CHECKOUT=: BUILD_JOBS=$(sysctl -n hw.logicalcpu)"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
