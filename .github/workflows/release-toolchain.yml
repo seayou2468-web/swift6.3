@@ -1,4 +1,4 @@
-name: Release Toolchain Build
+name: LLVM/Clang XCFramework Build
 
 on:
   workflow_dispatch:
@@ -15,11 +15,11 @@ on:
       - ".github/workflows/release-toolchain.yml"
 
 concurrency:
-  group: release-toolchain-${{ github.ref }}
+  group: llvm-clang-xcframework-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build-release:
+  build-llvm-clang:
     runs-on: macos-latest
     permissions:
       contents: read
@@ -30,8 +30,6 @@ jobs:
 
     env:
       SCHEME: ${{ github.event.inputs.scheme || 'release/6.3' }}
-      REQUIRED_XCODE_VERSION: "26.1.1"
-      ALLOW_RUNTIME_FAILURE: "1"
       BUILD_ID: ${{ github.run_number }}-${{ github.run_attempt }}
       NSUnbufferedIO: "YES"
       CCACHE_DIR: ${{ github.workspace }}/indie-swift-compiler/.build/ccache
@@ -73,7 +71,7 @@ jobs:
             echo "ccache is not available on this runner; continuing without compiler cache."
           fi
 
-      - name: Ordered release build
+      - name: Build LLVM/Clang XCFrameworks
         run: |
           ./Scripts/ci_release_ordered_build.sh "$SCHEME"
 
@@ -87,7 +85,7 @@ jobs:
       - name: Upload Artifacts directory
         uses: actions/upload-artifact@v4
         with:
-          name: toolchain-artifacts-${{ github.run_number }}
+          name: llvm-clang-artifacts-${{ github.run_number }}
           path: |
             indie-swift-compiler/Artifacts/**
             indie-swift-compiler/Dist/**
