@@ -61,6 +61,8 @@ using SILPerformanceEntryFn = int (*)(
 swift_irgen_adapter_compile_fn gCompileCallback = nullptr;
 swift_irgen_adapter_emit_sil_fn gEmitSILCallback = nullptr;
 swift_irgen_adapter_emit_ir_from_sil_fn gEmitIRFromSILCallback = nullptr;
+void *gFrontendHandle = nullptr;
+std::string gFrontendLibraryPath;
 
 std::string resolveSDKPath() {
   if (const char *home = std::getenv("HOME")) {
@@ -90,6 +92,11 @@ swift_irgen_adapter_compile_fn resolveCompileCallback() {
   if (gCompileCallback != nullptr) {
     return gCompileCallback;
   }
+  if (gFrontendHandle != nullptr) {
+    if (void *symbol = dlsym(gFrontendHandle, "swift_frontend_embedded_compile")) {
+      return reinterpret_cast<swift_irgen_adapter_compile_fn>(symbol);
+    }
+  }
 #if defined(__GNUC__) || defined(__clang__)
   if (swift_frontend_embedded_compile != nullptr) {
     return swift_frontend_embedded_compile;
@@ -102,6 +109,11 @@ swift_irgen_adapter_emit_sil_fn resolveEmitSILCallback() {
   if (gEmitSILCallback != nullptr) {
     return gEmitSILCallback;
   }
+  if (gFrontendHandle != nullptr) {
+    if (void *symbol = dlsym(gFrontendHandle, "swift_frontend_embedded_emit_sil")) {
+      return reinterpret_cast<swift_irgen_adapter_emit_sil_fn>(symbol);
+    }
+  }
 #if defined(__GNUC__) || defined(__clang__)
   if (swift_frontend_embedded_emit_sil != nullptr) {
     return swift_frontend_embedded_emit_sil;
@@ -113,6 +125,11 @@ swift_irgen_adapter_emit_sil_fn resolveEmitSILCallback() {
 swift_irgen_adapter_emit_ir_from_sil_fn resolveEmitIRFromSILCallback() {
   if (gEmitIRFromSILCallback != nullptr) {
     return gEmitIRFromSILCallback;
+  }
+  if (gFrontendHandle != nullptr) {
+    if (void *symbol = dlsym(gFrontendHandle, "swift_irgen_embedded_emit_ir_from_sil")) {
+      return reinterpret_cast<swift_irgen_adapter_emit_ir_from_sil_fn>(symbol);
+    }
   }
 #if defined(__GNUC__) || defined(__clang__)
   if (swift_irgen_embedded_emit_ir_from_sil != nullptr) {
@@ -140,8 +157,20 @@ SILPerformanceEntryFn resolveSILPerformanceFunction() {
 } // namespace
 
 int swift_irgen_adapter_set_frontend_path(const char *swift_frontend_path) {
-  (void)swift_frontend_path;
-  return -9;
+  if (!swift_frontend_path || *swift_frontend_path == '\0') {
+    return -3;
+  }
+  if (gFrontendHandle != nullptr) {
+    dlclose(gFrontendHandle);
+    gFrontendHandle = nullptr;
+  }
+  gFrontendLibraryPath = std::string(swift_frontend_path);
+  gFrontendHandle = dlopen(gFrontendLibraryPath.c_str(), RTLD_NOW | RTLD_LOCAL);
+  if (!gFrontendHandle) {
+    gFrontendLibraryPath.clear();
+    return -9;
+  }
+  return 0;
 }
 
 int swift_irgen_adapter_set_compile_callback(swift_irgen_adapter_compile_fn callback) {

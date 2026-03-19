@@ -1,8 +1,6 @@
 #include "SwiftSILOptimizerAdapter.h"
 
 #include <filesystem>
-#include <fstream>
-#include <string>
 
 namespace {
 #if defined(__GNUC__) || defined(__clang__)
@@ -52,31 +50,6 @@ swift_sil_optimizer_adapter_performance_fn resolvePerformanceCallback() {
   return nullptr;
 }
 
-int copyWithPrefix(
-    const char *input_sil_path,
-    const char *module_name,
-    const char *out_sil_path,
-    const char *prefix) {
-  std::ifstream in(input_sil_path, std::ios::binary);
-  if (!in) {
-    return -4;
-  }
-
-  std::ofstream out(out_sil_path, std::ios::binary | std::ios::trunc);
-  if (!out) {
-    return -5;
-  }
-
-  out << prefix << "\n";
-  out << "// SILOptimizer passthrough: " << module_name << "\n";
-  out << in.rdbuf();
-
-  if (!out.good() || !std::filesystem::exists(out_sil_path)) {
-    return -6;
-  }
-
-  return 0;
-}
 } // namespace
 
 int swift_sil_optimizer_adapter_set_mandatory_callback(
@@ -103,11 +76,7 @@ int swift_sil_optimizer_adapter_run_mandatory(
     return callback(input_sil_path, module_name, out_sil_path);
   }
 
-  return copyWithPrefix(
-      input_sil_path,
-      module_name,
-      out_sil_path,
-      "sil_stage canonical");
+  return -7;
 }
 
 int swift_sil_optimizer_adapter_run_performance(
@@ -122,11 +91,7 @@ int swift_sil_optimizer_adapter_run_performance(
     return callback(input_sil_path, module_name, out_sil_path);
   }
 
-  return copyWithPrefix(
-      input_sil_path,
-      module_name,
-      out_sil_path,
-      "// performance-sil-optimizer");
+  return -7;
 }
 
 int swift_sil_optimizer_adapter_optimize(
