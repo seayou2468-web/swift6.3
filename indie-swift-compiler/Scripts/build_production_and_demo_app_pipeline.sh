@@ -42,12 +42,12 @@ xcodebuild \
   -project "Demo/EmbeddedCompilerIDE-iOS/EmbeddedCompilerIDE.xcodeproj" \
   -scheme "EmbeddedCompilerIDE" \
   -configuration Release \
-  -sdk iphonesimulator \
-  -destination 'generic/platform=iOS Simulator' \
+  -sdk iphoneos \
+  -destination 'generic/platform=iOS' \
   -derivedDataPath "$DERIVED_DATA_PATH" \
   CODE_SIGNING_ALLOWED=NO \
   build
-DEMO_APP_BIN="$DERIVED_DATA_PATH/Build/Products/Release-iphonesimulator/EmbeddedCompilerIDE.app"
+DEMO_APP_BIN="$DERIVED_DATA_PATH/Build/Products/Release-iphoneos/EmbeddedCompilerIDE.app"
 if [ -z "$DEMO_APP_BIN" ]; then
   echo "[ERROR] could not find EmbeddedCompilerIDE.app under DerivedData" >&2
   exit 1
@@ -69,5 +69,5 @@ echo "production-and-demo pipeline complete"
 echo "- minimal update-checkout sync complete for scheme: $TOOLCHAIN_SCHEME"
 echo "- LLVM/Clang xcframeworks built and verified"
 echo "- MiniSwiftCompilerCore built in release mode"
-echo "- EmbeddedCompilerIDE iOS app built in release mode"
+echo "- EmbeddedCompilerIDE iOS device app built in release mode"
 echo "- staged build inputs at $STAGE_DIR"
