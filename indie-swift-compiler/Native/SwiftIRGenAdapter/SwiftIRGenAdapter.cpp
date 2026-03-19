@@ -8,46 +8,6 @@
 #include <thread>
 
 namespace {
-#if defined(__GNUC__) || defined(__clang__)
-extern "C" int swift_frontend_embedded_compile(
-    const char *swift_source,
-    const char *module_name,
-    const char *out_ll_path,
-    const char *target_triple,
-    const char *sdk_path) __attribute__((weak));
-extern "C" int swift_frontend_embedded_emit_sil(
-    const char *swift_source,
-    const char *module_name,
-    const char *out_sil_path,
-    const char *target_triple,
-    const char *sdk_path) __attribute__((weak));
-extern "C" int swift_irgen_embedded_emit_ir_from_sil(
-    const char *input_sil_path,
-    const char *module_name,
-    const char *out_ll_path,
-    const char *target_triple,
-    const char *sdk_path) __attribute__((weak));
-#else
-extern "C" int swift_frontend_embedded_compile(
-    const char *swift_source,
-    const char *module_name,
-    const char *out_ll_path,
-    const char *target_triple,
-    const char *sdk_path);
-extern "C" int swift_frontend_embedded_emit_sil(
-    const char *swift_source,
-    const char *module_name,
-    const char *out_sil_path,
-    const char *target_triple,
-    const char *sdk_path);
-extern "C" int swift_irgen_embedded_emit_ir_from_sil(
-    const char *input_sil_path,
-    const char *module_name,
-    const char *out_ll_path,
-    const char *target_triple,
-    const char *sdk_path);
-#endif
-
 using SILMandatoryEntryFn = int (*)(
     const char *input_sil_path,
     const char *module_name,
@@ -92,16 +52,6 @@ swift_irgen_adapter_compile_fn resolveCompileCallback() {
   if (gCompileCallback != nullptr) {
     return gCompileCallback;
   }
-  if (gFrontendHandle != nullptr) {
-    if (void *symbol = dlsym(gFrontendHandle, "swift_frontend_embedded_compile")) {
-      return reinterpret_cast<swift_irgen_adapter_compile_fn>(symbol);
-    }
-  }
-#if defined(__GNUC__) || defined(__clang__)
-  if (swift_frontend_embedded_compile != nullptr) {
-    return swift_frontend_embedded_compile;
-  }
-#endif
   return nullptr;
 }
 
@@ -109,16 +59,6 @@ swift_irgen_adapter_emit_sil_fn resolveEmitSILCallback() {
   if (gEmitSILCallback != nullptr) {
     return gEmitSILCallback;
   }
-  if (gFrontendHandle != nullptr) {
-    if (void *symbol = dlsym(gFrontendHandle, "swift_frontend_embedded_emit_sil")) {
-      return reinterpret_cast<swift_irgen_adapter_emit_sil_fn>(symbol);
-    }
-  }
-#if defined(__GNUC__) || defined(__clang__)
-  if (swift_frontend_embedded_emit_sil != nullptr) {
-    return swift_frontend_embedded_emit_sil;
-  }
-#endif
   return nullptr;
 }
 
@@ -126,16 +66,6 @@ swift_irgen_adapter_emit_ir_from_sil_fn resolveEmitIRFromSILCallback() {
   if (gEmitIRFromSILCallback != nullptr) {
     return gEmitIRFromSILCallback;
   }
-  if (gFrontendHandle != nullptr) {
-    if (void *symbol = dlsym(gFrontendHandle, "swift_irgen_embedded_emit_ir_from_sil")) {
-      return reinterpret_cast<swift_irgen_adapter_emit_ir_from_sil_fn>(symbol);
-    }
-  }
-#if defined(__GNUC__) || defined(__clang__)
-  if (swift_irgen_embedded_emit_ir_from_sil != nullptr) {
-    return swift_irgen_embedded_emit_ir_from_sil;
-  }
-#endif
   return nullptr;
 }
 
@@ -169,6 +99,22 @@ int swift_irgen_adapter_set_frontend_path(const char *swift_frontend_path) {
   if (!gFrontendHandle) {
     gFrontendLibraryPath.clear();
     return -9;
+  }
+  gCompileCallback = reinterpret_cast<swift_irgen_adapter_compile_fn>(
+      dlsym(gFrontendHandle, "swift_frontend_embedded_compile"));
+  gEmitSILCallback = reinterpret_cast<swift_irgen_adapter_emit_sil_fn>(
+      dlsym(gFrontendHandle, "swift_frontend_embedded_emit_sil"));
+  gEmitIRFromSILCallback = reinterpret_cast<swift_irgen_adapter_emit_ir_from_sil_fn>(
+      dlsym(gFrontendHandle, "swift_irgen_embedded_emit_ir_from_sil"));
+
+  if (!gCompileCallback || !gEmitSILCallback || !gEmitIRFromSILCallback) {
+    dlclose(gFrontendHandle);
+    gFrontendHandle = nullptr;
+    gFrontendLibraryPath.clear();
+    gCompileCallback = nullptr;
+    gEmitSILCallback = nullptr;
+    gEmitIRFromSILCallback = nullptr;
+    return -8;
   }
   return 0;
 }
