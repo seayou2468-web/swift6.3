@@ -37,6 +37,7 @@ HOST_ARCH="$(uname -m)"
 BUILD_JOBS="${BUILD_JOBS:-$(sysctl -n hw.logicalcpu 2>/dev/null || echo 8)}"
 APPLE_LINKER_CMAKE_FLAGS=()
 NATIVE_LLVM_CMAKE_FLAGS=()
+OPTIONAL_COMPILER_LAUNCHER_FLAGS=()
 
 require_tool() {
   command -v "$1" >/dev/null 2>&1 || { echo "必要ツール不足: $1"; exit 1; }
@@ -89,8 +90,32 @@ configure_apple_linker_cmake_flags() {
   )
 }
 
+configure_optional_compiler_launcher_flags() {
+  OPTIONAL_COMPILER_LAUNCHER_FLAGS=()
+  if command -v ccache >/dev/null 2>&1; then
+    export CCACHE_DIR="${CCACHE_DIR:-$ROOT_DIR/.build/ccache}"
+    export CCACHE_BASEDIR="${CCACHE_BASEDIR:-$ROOT_DIR}"
+    export CCACHE_COMPILERCHECK="${CCACHE_COMPILERCHECK:-content}"
+    export CCACHE_MAXSIZE="${CCACHE_MAXSIZE:-2G}"
+    mkdir -p "$CCACHE_DIR"
+    OPTIONAL_COMPILER_LAUNCHER_FLAGS=(
+      "-DCMAKE_C_COMPILER_LAUNCHER=ccache"
+      "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
+    )
+    echo "ccache enabled: dir=$CCACHE_DIR"
+  fi
+}
+
 cmake_build() {
-  cmake --build "$@" --parallel "$BUILD_JOBS"
+  if cmake --build "$@" --parallel "$BUILD_JOBS"; then
+    return 0
+  fi
+  if [[ "$BUILD_JOBS" -gt 1 ]]; then
+    echo "WARN: parallel build failed, retrying serial build for stability..."
+    cmake --build "$@" --parallel 1
+    return $?
+  fi
+  return 1
 }
 
 pick_first_available_target() {
@@ -179,7 +204,8 @@ build_native_llvm_tablegen_tools() {
     -DLLVM_ENABLE_EH=OFF \
     -DLLVM_ENABLE_RTTI=ON \
     -DLLVM_ENABLE_TERMINFO=OFF \
-    -DLLVM_ENABLE_LIBXML2=OFF
+    -DLLVM_ENABLE_LIBXML2=OFF \
+    "${OPTIONAL_COMPILER_LAUNCHER_FLAGS[@]}"
 
   cmake_build "$build_dir" --target llvm-tblgen clang-tblgen
 
@@ -304,6 +330,7 @@ echo "[1/4] Build LLVM/Clang for iOS arm64"
 require_darwin_host
 clear_inherited_apple_build_env
 configure_apple_linker_cmake_flags
+configure_optional_compiler_launcher_flags
 build_native_llvm_tablegen_tools "$LLVM_SRC_DIR/llvm" "$LLVM_NATIVE_BUILD"
 cmake -S "$LLVM_SRC_DIR/llvm" -B "$LLVM_IOS_BUILD" -G Ninja \
   -DLLVM_ENABLE_PROJECTS="clang;lld" \
@@ -343,6 +370,7 @@ cmake -S "$LLVM_SRC_DIR/llvm" -B "$LLVM_IOS_BUILD" -G Ninja \
   -DLLVM_ENABLE_LIBXML2=OFF \
   -DLLVM_INCLUDE_TESTS=OFF \
   -DLLVM_INCLUDE_BENCHMARKS=OFF \
+  "${OPTIONAL_COMPILER_LAUNCHER_FLAGS[@]}" \
   "${NATIVE_LLVM_CMAKE_FLAGS[@]}" \
   "${APPLE_LINKER_CMAKE_FLAGS[@]}"
 build_llvm_clang_libraries "$LLVM_IOS_BUILD"
@@ -378,7 +406,8 @@ cmake -S "$SWIFT_FRONTEND_SRC" -B "$SWIFT_FRONTEND_IOS_BUILD" -G Ninja \
   -DCMAKE_OSX_ARCHITECTURES="$APPLE_ARCH" \
   -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
   -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_INSTALL_PREFIX="$SWIFT_FRONTEND_IOS_INSTALL"
+  -DCMAKE_INSTALL_PREFIX="$SWIFT_FRONTEND_IOS_INSTALL" \
+  "${OPTIONAL_COMPILER_LAUNCHER_FLAGS[@]}"
 cmake_build "$SWIFT_FRONTEND_IOS_BUILD" --target SwiftFrontendAdapter
 cmake --install "$SWIFT_FRONTEND_IOS_BUILD"
 mv "$SWIFT_FRONTEND_IOS_INSTALL/lib/libSwiftFrontend.a" "$SWIFT_FRONTEND_IOS_INSTALL/lib/libSwiftFrontendAdapter.a"
