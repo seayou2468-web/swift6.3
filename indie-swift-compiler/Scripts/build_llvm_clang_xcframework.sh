@@ -9,6 +9,7 @@ fi
 
 LLVM_PROJECT="$(cd "$1" && pwd)"
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+source "$ROOT_DIR/Scripts/apple_build_common.sh"
 BUILD_ROOT="$ROOT_DIR/.build/llvm-clang"
 OUT_DIR="$ROOT_DIR/Artifacts"
 IOS_DEVICE_ONLY="${IOS_DEVICE_ONLY:-1}"
@@ -20,6 +21,10 @@ IOS_PREFIX="$IOS_BUILD/install"
 SIM_PREFIX="$SIM_BUILD/install"
 IOS_PACKAGE_DIR="$IOS_BUILD/package"
 SIM_PACKAGE_DIR="$SIM_BUILD/package"
+
+require_darwin_arm64_host
+clear_inherited_apple_build_env
+configure_optional_compiler_launcher_flags
 
 rm -rf "$BUILD_ROOT"
 mkdir -p "$NATIVE_BUILD" "$IOS_BUILD" "$OUT_DIR"
@@ -43,54 +48,32 @@ build_llvm_clang_libraries() {
   fi
   if [[ ${#bootstrap_targets[@]} -gt 0 ]]; then
     echo "Prebuild bootstrap targets: ${bootstrap_targets[*]}"
-    cmake --build "$build_dir" --target "${bootstrap_targets[@]}"
+    cmake_build "$build_dir" --target "${bootstrap_targets[@]}"
   fi
 
-  local -a llvm_candidates=(llvm-libraries lib/all all)
-  local -a clang_candidates=(clang-libraries clang-cpp clang "")
-  local -a lld_candidates=(lld "")
+  local llvm_t
+  local clang_t
+  local lld_t
   local -a build_args=()
-  local tried=0
+  llvm_t="$(pick_first_available_target "$target_list" llvm-libraries lib/all all)" || llvm_t="all"
+  clang_t="$(pick_first_available_target "$target_list" clang-libraries clang-cpp clang __EMPTY__)" || clang_t=""
+  lld_t="$(pick_first_available_target "$target_list" lld __EMPTY__)" || lld_t=""
 
-  for llvm_t in "${llvm_candidates[@]}"; do
-    if [[ "$llvm_t" != "all" ]] && ! printf '%s\n' "$target_list" | grep -qx "$llvm_t"; then
-      continue
-    fi
+  build_args=(--target "$llvm_t")
+  if [[ -n "$clang_t" ]]; then
+    build_args+=("$clang_t")
+  fi
+  if [[ -n "$lld_t" ]]; then
+    build_args+=("$lld_t")
+  fi
 
-    for clang_t in "${clang_candidates[@]}"; do
-      if [[ -n "$clang_t" ]] && [[ "$clang_t" != "clang" ]] && ! printf '%s\n' "$target_list" | grep -qx "$clang_t"; then
-        continue
-      fi
-      if [[ "$clang_t" == "clang" ]] && ! printf '%s\n' "$target_list" | grep -qx 'clang'; then
-        continue
-      fi
-
-      for lld_t in "${lld_candidates[@]}"; do
-        if [[ -n "$lld_t" ]] && ! printf '%s\n' "$target_list" | grep -qx "$lld_t"; then
-          continue
-        fi
-
-        build_args=(--target "$llvm_t")
-        if [[ -n "$clang_t" ]]; then
-          build_args+=("$clang_t")
-        fi
-        if [[ -n "$lld_t" ]]; then
-          build_args+=("$lld_t")
-        fi
-
-        tried=$((tried+1))
-        echo "LLVM/Clang/LLD build attempt #$tried: ${build_args[*]}"
-        if cmake --build "$build_dir" "${build_args[@]}"; then
-          return 0
-        fi
-
-        echo "WARN: build attempt failed. trying next fallback targets..."
-      done
-    done
-  done
+  echo "LLVM/Clang/LLD build targets: ${build_args[*]}"
+  if cmake_build "$build_dir" "${build_args[@]}"; then
+    return 0
+  fi
 
   echo "WARN: no target combination succeeded, fallback to plain 'cmake --build'"
-  cmake --build "$build_dir"
+  cmake_build "$build_dir"
 }
 
 build_native_llvm_tablegen_tools() {
@@ -99,8 +82,11 @@ build_native_llvm_tablegen_tools() {
 
   cmake -S "$llvm_source_dir" -B "$build_dir" -G Ninja \
     -DLLVM_ENABLE_PROJECTS="clang" \
+    -DCMAKE_SYSTEM_NAME=Darwin \
+    -DCMAKE_OSX_SYSROOT=macosx \
+    -DCMAKE_OSX_ARCHITECTURES="$APPLE_ARCH" \
     -DCMAKE_BUILD_TYPE=Release \
-    -DLLVM_TARGETS_TO_BUILD="Native" \
+    -DLLVM_TARGETS_TO_BUILD="$LLVM_ARCH" \
     -DCLANG_INCLUDE_TESTS=OFF \
     -DCLANG_BUILD_TOOLS=ON \
     -DCLANG_ENABLE_STATIC_ANALYZER=OFF \
@@ -121,9 +107,10 @@ build_native_llvm_tablegen_tools() {
     -DLLVM_ENABLE_EH=OFF \
     -DLLVM_ENABLE_RTTI=ON \
     -DLLVM_ENABLE_TERMINFO=OFF \
-    -DLLVM_ENABLE_LIBXML2=OFF
+    -DLLVM_ENABLE_LIBXML2=OFF \
+    "${CMAKE_LAUNCHER_FLAGS[@]}"
 
-  cmake --build "$build_dir" --target llvm-tblgen clang-tblgen
+  cmake_build "$build_dir" --target llvm-tblgen clang-tblgen
 
   if [[ ! -x "$build_dir/bin/llvm-tblgen" || ! -x "$build_dir/bin/clang-tblgen" ]]; then
     echo "エラー: native tblgen tools の生成に失敗しました: $build_dir/bin"
@@ -180,7 +167,7 @@ cmake -S "$LLVM_PROJECT/llvm" -B "$IOS_BUILD" -G Ninja \
   -DCMAKE_OSX_ARCHITECTURES=arm64 \
   -DCMAKE_INSTALL_PREFIX="$IOS_PREFIX" \
   -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
-  -DLLVM_TARGETS_TO_BUILD="AArch64;ARM;X86" \
+  -DLLVM_TARGETS_TO_BUILD="$LLVM_ARCH" \
   -DCOMPILER_RT_ENABLE_IOS=FALSE \
   -DCOMPILER_RT_ENABLE_WATCHOS=FALSE \
   -DCOMPILER_RT_ENABLE_TVOS=FALSE \
@@ -207,8 +194,10 @@ cmake -S "$LLVM_PROJECT/llvm" -B "$IOS_BUILD" -G Ninja \
   -DLLVM_ENABLE_LIBXML2=OFF \
   -DLLVM_INCLUDE_TESTS=OFF \
   -DLLVM_INCLUDE_BENCHMARKS=OFF \
+  "${CMAKE_LAUNCHER_FLAGS[@]}" \
   -DLLVM_TABLEGEN="$NATIVE_BUILD/bin/llvm-tblgen" \
   -DCLANG_TABLEGEN="$NATIVE_BUILD/bin/clang-tblgen" \
+  -DLLVM_NATIVE_TOOL_DIR="$NATIVE_BUILD/bin" \
   -DLLVM_NATIVE_BUILD="$NATIVE_BUILD"
 
 build_llvm_clang_libraries "$IOS_BUILD"
@@ -228,10 +217,10 @@ if [[ "$IOS_DEVICE_ONLY" != "1" ]]; then
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
     -DCMAKE_OSX_SYSROOT=iphonesimulator \
-    -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+    -DCMAKE_OSX_ARCHITECTURES="$APPLE_ARCH" \
     -DCMAKE_INSTALL_PREFIX="$SIM_PREFIX" \
     -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
-    -DLLVM_TARGETS_TO_BUILD="AArch64;ARM;X86" \
+    -DLLVM_TARGETS_TO_BUILD="$LLVM_ARCH" \
     -DCOMPILER_RT_ENABLE_IOS=FALSE \
     -DCOMPILER_RT_ENABLE_WATCHOS=FALSE \
     -DCOMPILER_RT_ENABLE_TVOS=FALSE \
@@ -258,8 +247,10 @@ if [[ "$IOS_DEVICE_ONLY" != "1" ]]; then
     -DLLVM_ENABLE_LIBXML2=OFF \
     -DLLVM_INCLUDE_TESTS=OFF \
     -DLLVM_INCLUDE_BENCHMARKS=OFF \
+    "${CMAKE_LAUNCHER_FLAGS[@]}" \
     -DLLVM_TABLEGEN="$NATIVE_BUILD/bin/llvm-tblgen" \
     -DCLANG_TABLEGEN="$NATIVE_BUILD/bin/clang-tblgen" \
+    -DLLVM_NATIVE_TOOL_DIR="$NATIVE_BUILD/bin" \
     -DLLVM_NATIVE_BUILD="$NATIVE_BUILD"
 
   build_llvm_clang_libraries "$SIM_BUILD"
@@ -287,8 +278,8 @@ fi
 LLVM_XC_ARGS+=( -output "$OUT_DIR/LLVM.xcframework" )
 CLANG_XC_ARGS+=( -output "$OUT_DIR/Clang.xcframework" )
 
-xcodebuild "${LLVM_XC_ARGS[@]}"
-xcodebuild "${CLANG_XC_ARGS[@]}"
+xcodebuild_safe "${LLVM_XC_ARGS[@]}"
+xcodebuild_safe "${CLANG_XC_ARGS[@]}"
 
 echo "作成完了:"
 echo "  $OUT_DIR/LLVM.xcframework"

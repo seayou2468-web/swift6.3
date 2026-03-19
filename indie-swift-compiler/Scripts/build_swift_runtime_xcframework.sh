@@ -2,9 +2,13 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+source "$ROOT_DIR/Scripts/apple_build_common.sh"
 OUT_DIR="$ROOT_DIR/Artifacts"
 OUT_XC="$OUT_DIR/SwiftRuntimeCore.xcframework"
 WORK_DIR="$ROOT_DIR/.build/swift-runtime"
+
+require_darwin_arm64_host
+clear_inherited_apple_build_env
 
 SWIFT_FRONTEND="${SWIFT_FRONTEND_PATH:-$(xcrun --find swift-frontend 2>/dev/null || true)}"
 if [[ -z "$SWIFT_FRONTEND" ]]; then
@@ -45,7 +49,7 @@ cat > "$SIM_HEADERS/SwiftRuntimeCore.h" <<'HEADER'
 // Linked archive: libswiftCore.a
 HEADER
 
-xcodebuild -create-xcframework \
+xcodebuild_safe -create-xcframework \
   -library "$IOS_LIB" -headers "$IOS_HEADERS" \
   -library "$SIM_LIB" -headers "$SIM_HEADERS" \
   -output "$OUT_XC"

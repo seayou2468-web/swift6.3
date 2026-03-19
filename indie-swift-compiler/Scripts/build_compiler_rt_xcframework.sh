@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+source "$ROOT_DIR/Scripts/apple_build_common.sh"
 SCHEME="${1:-release/6.3}"
 WORK_DIR="$ROOT_DIR/.build/compiler-rt"
 TOOLCHAIN_WORKSPACE="${TOOLCHAIN_WORKSPACE:-$ROOT_DIR/.toolchain-workspace}"
@@ -22,6 +23,10 @@ require_tool cmake
 require_tool ninja
 require_tool xcodebuild
 require_tool libtool
+
+require_darwin_arm64_host
+clear_inherited_apple_build_env
+configure_optional_compiler_launcher_flags
 
 mkdir -p "$WORK_DIR" "$OUT_DIR"
 "$ROOT_DIR/Scripts/bootstrap_minimal_toolchain_repos.sh" "$SCHEME" "$TOOLCHAIN_WORKSPACE"
@@ -53,7 +58,7 @@ configure_compiler_rt() {
     -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
     -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
     -DCMAKE_INSTALL_PREFIX="$install_dir" \
-    -DLLVM_TARGETS_TO_BUILD="AArch64;ARM;X86" \
+    -DLLVM_TARGETS_TO_BUILD="$LLVM_ARCH" \
     -DLLVM_BUILD_TOOLS=OFF \
     -DLLVM_INCLUDE_TOOLS=OFF \
     -DLLVM_BUILD_UTILS=OFF \
@@ -69,7 +74,8 @@ configure_compiler_rt() {
     -DCOMPILER_RT_ENABLE_IOS=TRUE \
     -DCOMPILER_RT_ENABLE_WATCHOS=FALSE \
     -DCOMPILER_RT_ENABLE_TVOS=FALSE \
-    -DCOMPILER_RT_ENABLE_XROS=FALSE
+    -DCOMPILER_RT_ENABLE_XROS=FALSE \
+    "${CMAKE_LAUNCHER_FLAGS[@]}"
 }
 
 build_compiler_rt() {
@@ -81,17 +87,17 @@ build_compiler_rt() {
   if printf '%s\n' "$target_list" | grep -qx 'llvm-config'; then pre+=(llvm-config); fi
   if printf '%s\n' "$target_list" | grep -qx 'clang-resource-headers'; then pre+=(clang-resource-headers); fi
   if [[ ${#pre[@]} -gt 0 ]]; then
-    cmake --build "$build_dir" --target "${pre[@]}"
+    cmake_build "$build_dir" --target "${pre[@]}"
   fi
 
   for t in compiler-rt runtimes all; do
     if printf '%s\n' "$target_list" | grep -qx "$t" || [[ "$t" == "all" ]]; then
-      if cmake --build "$build_dir" --target "$t"; then
+      if cmake_build "$build_dir" --target "$t"; then
         return 0
       fi
     fi
   done
-  cmake --build "$build_dir"
+  cmake_build "$build_dir"
 }
 
 collect_compiler_rt() {
@@ -105,7 +111,7 @@ collect_compiler_rt() {
   libtool -static -o "$out_lib" "${libs[@]}"
 }
 
-configure_compiler_rt "$IOS_BUILD" "$IOS_INSTALL" iphoneos arm64
+configure_compiler_rt "$IOS_BUILD" "$IOS_INSTALL" iphoneos "$APPLE_ARCH"
 build_compiler_rt "$IOS_BUILD"
 cmake --install "$IOS_BUILD"
 IOS_LIB_COMBINED="$WORK_DIR/libCompilerRT-ios.a"
@@ -121,7 +127,7 @@ XC_ARGS=(
 )
 
 if [[ "$IOS_DEVICE_ONLY" != "1" ]]; then
-  configure_compiler_rt "$SIM_BUILD" "$SIM_INSTALL" iphonesimulator "arm64;x86_64"
+  configure_compiler_rt "$SIM_BUILD" "$SIM_INSTALL" iphonesimulator "$APPLE_ARCH"
   build_compiler_rt "$SIM_BUILD"
   cmake --install "$SIM_BUILD"
   SIM_LIB_COMBINED="$WORK_DIR/libCompilerRT-sim.a"
@@ -134,6 +140,6 @@ HDR
 fi
 
 XC_ARGS+=( -output "$OUT_XC" )
-xcodebuild "${XC_ARGS[@]}"
+xcodebuild_safe "${XC_ARGS[@]}"
 
 echo "作成完了: $OUT_XC"
