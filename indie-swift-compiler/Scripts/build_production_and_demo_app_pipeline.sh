@@ -28,7 +28,7 @@ ensure_path "Release/LLVM-21.1.6-iphoneos.zip" "LLVM release zip"
 ensure_path "Release/Clang-21.1.6-iphoneos.zip" "Clang release zip"
 
 echo "[4/6] building MiniSwiftCompilerCore products"
-swift build -c release --product MiniSwiftCompilerCore --product MiniSwiftCompilerCoreStatic
+swift build -c release --product MiniSwiftCompilerCore
 ensure_path ".build" "swift build output directory"
 
 echo "[5/6] building demo app target with production artifacts available"
