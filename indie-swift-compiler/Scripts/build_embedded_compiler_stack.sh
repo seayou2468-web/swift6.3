@@ -5,9 +5,9 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
 TOOLCHAIN_SCHEME="${TOOLCHAIN_SCHEME:-release/6.3}"
-./Scripts/bootstrap_minimal_toolchain_repos.sh "$TOOLCHAIN_SCHEME"
+bash ./Scripts/bootstrap_minimal_toolchain_repos.sh "$TOOLCHAIN_SCHEME"
 
-./Scripts/extract_swift_pipeline.sh
+bash ./Scripts/extract_swift_pipeline.sh
 make manual-release
 swift build -c release
 

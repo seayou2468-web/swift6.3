@@ -15,10 +15,10 @@ ensure_path() {
 }
 
 echo "[1/6] syncing minimal update-checkout repos for indie compiler"
-./Scripts/bootstrap_minimal_toolchain_repos.sh "$TOOLCHAIN_SCHEME"
+bash ./Scripts/bootstrap_minimal_toolchain_repos.sh "$TOOLCHAIN_SCHEME"
 
 echo "[2/6] extracting swift frontend pipeline"
-./Scripts/extract_swift_pipeline.sh
+bash ./Scripts/extract_swift_pipeline.sh
 
 echo "[3/6] building LLVM/Clang xcframework artifacts"
 make release-llvm-clang

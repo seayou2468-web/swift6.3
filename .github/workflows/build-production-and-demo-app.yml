@@ -14,9 +14,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Sync minimal update-checkout repos (indie compiler)
-        run: ./Scripts/bootstrap_minimal_toolchain_repos.sh "$TOOLCHAIN_SCHEME"
+        run: bash ./Scripts/bootstrap_minimal_toolchain_repos.sh "$TOOLCHAIN_SCHEME"
       - name: Build LLVM/Clang -> MiniSwiftCompilerCore -> Demo app (guaranteed order)
-        run: ./Scripts/build_production_and_demo_app_pipeline.sh
+        run: bash ./Scripts/build_production_and_demo_app_pipeline.sh
       - name: Run MiniSwiftCompilerCore tests
         run: swift test --no-parallel
       - name: Upload demo app build inputs
