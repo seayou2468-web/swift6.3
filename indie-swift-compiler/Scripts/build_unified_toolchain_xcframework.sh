@@ -145,6 +145,7 @@ build_native_llvm_tablegen_tools() {
   NATIVE_LLVM_CMAKE_FLAGS=(
     "-DLLVM_TABLEGEN=$build_dir/bin/llvm-tblgen"
     "-DCLANG_TABLEGEN=$build_dir/bin/clang-tblgen"
+    "-DLLVM_NATIVE_TOOL_DIR=$build_dir/bin"
     "-DLLVM_NATIVE_BUILD=$build_dir"
   )
 }
