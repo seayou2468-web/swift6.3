@@ -12,15 +12,11 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 source "$ROOT_DIR/Scripts/apple_build_common.sh"
 BUILD_ROOT="$ROOT_DIR/.build/llvm-clang"
 OUT_DIR="$ROOT_DIR/Artifacts"
-IOS_DEVICE_ONLY="${IOS_DEVICE_ONLY:-1}"
 
 NATIVE_BUILD="$BUILD_ROOT/native-host"
 IOS_BUILD="$BUILD_ROOT/ios"
-SIM_BUILD="$BUILD_ROOT/ios-sim"
 IOS_PREFIX="$IOS_BUILD/install"
-SIM_PREFIX="$SIM_BUILD/install"
 IOS_PACKAGE_DIR="$IOS_BUILD/package"
-SIM_PACKAGE_DIR="$SIM_BUILD/package"
 
 require_darwin_arm64_host
 clear_inherited_apple_build_env
@@ -29,9 +25,6 @@ configure_optional_compiler_launcher_flags
 
 rm -rf "$BUILD_ROOT"
 mkdir -p "$NATIVE_BUILD" "$IOS_BUILD" "$OUT_DIR"
-if [[ "$IOS_DEVICE_ONLY" != "1" ]]; then
-  mkdir -p "$SIM_BUILD"
-fi
 
 build_llvm_clang_libraries() {
   local build_dir="$1"
@@ -222,68 +215,6 @@ prepare_llvm_package_artifacts \
   "$IOS_PACKAGE_DIR/llvm-headers" \
   "$IOS_PACKAGE_DIR/clang-headers"
 
-if [[ "$IOS_DEVICE_ONLY" != "1" ]]; then
-  # iOS Simulator
-  configure_cross_apple_cmake_flags iphonesimulator
-  sim_cmake_args=(
-    -S "$LLVM_PROJECT/llvm"
-    -B "$SIM_BUILD"
-    -G Ninja
-    -DLLVM_ENABLE_PROJECTS="clang;lld"
-    -DCMAKE_BUILD_TYPE=Release
-    -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0
-    -DCMAKE_INSTALL_PREFIX="$SIM_PREFIX"
-    -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
-    -DLLVM_TARGETS_TO_BUILD="$LLVM_ARCH"
-    -DCOMPILER_RT_ENABLE_IOS=FALSE
-    -DCOMPILER_RT_ENABLE_WATCHOS=FALSE
-    -DCOMPILER_RT_ENABLE_TVOS=FALSE
-    -DCOMPILER_RT_ENABLE_XROS=FALSE
-    -DCLANG_INCLUDE_TESTS=OFF
-    -DCLANG_BUILD_TOOLS=OFF
-    -DCLANG_ENABLE_STATIC_ANALYZER=OFF
-    -DCLANG_ENABLE_ARCMT=OFF
-    -DLLVM_INCLUDE_DOCS=OFF
-    -DLLVM_INCLUDE_EXAMPLES=OFF
-    -DLLVM_BUILD_TOOLS=OFF
-    -DLLVM_BUILD_UTILS=OFF
-    -DLLVM_INCLUDE_TOOLS=OFF
-    -DLLVM_INCLUDE_UTILS=OFF
-    -DLLVM_INSTALL_TOOLCHAIN_ONLY=ON
-    -DBUILD_SHARED_LIBS=OFF
-    -DLLVM_ENABLE_ZLIB=OFF
-    -DLLVM_ENABLE_ZSTD=OFF
-    -DLLVM_ENABLE_THREADS=ON
-    -DLLVM_ENABLE_UNWIND_TABLES=OFF
-    -DLLVM_ENABLE_EH=OFF
-    -DLLVM_ENABLE_RTTI=ON
-    -DLLVM_ENABLE_TERMINFO=OFF
-    -DLLVM_ENABLE_LIBXML2=OFF
-    -DLLVM_INCLUDE_TESTS=OFF
-    -DLLVM_INCLUDE_BENCHMARKS=OFF
-  )
-  sim_cmake_args+=("${APPLE_CROSS_STAGE_CMAKE_FLAGS[@]}")
-  if [[ ${#CMAKE_LAUNCHER_FLAGS[@]} -gt 0 ]]; then
-    sim_cmake_args+=("${CMAKE_LAUNCHER_FLAGS[@]}")
-  fi
-  sim_cmake_args+=(
-    -DLLVM_TABLEGEN="$NATIVE_BUILD/bin/llvm-tblgen"
-    -DCLANG_TABLEGEN="$NATIVE_BUILD/bin/clang-tblgen"
-    -DLLVM_NATIVE_TOOL_DIR="$NATIVE_BUILD/bin"
-    -DLLVM_NATIVE_BUILD="$NATIVE_BUILD"
-  )
-  cmake "${sim_cmake_args[@]}"
-
-  build_llvm_clang_libraries "$SIM_BUILD"
-  cmake --install "$SIM_BUILD"
-  prepare_llvm_package_artifacts \
-    "$SIM_PREFIX" \
-    "$SIM_PACKAGE_DIR" \
-    "$SIM_PACKAGE_DIR/llvm.a" \
-    "$SIM_PACKAGE_DIR/llvm-headers" \
-    "$SIM_PACKAGE_DIR/clang-headers"
-fi
-
 LLVM_XC_ARGS=(
   -create-xcframework
   -library "$IOS_PACKAGE_DIR/llvm.a" -headers "$IOS_PACKAGE_DIR/llvm-headers"
@@ -292,10 +223,6 @@ CLANG_XC_ARGS=(
   -create-xcframework
   -library "$IOS_PREFIX/lib/libclang.dylib" -headers "$IOS_PACKAGE_DIR/clang-headers"
 )
-if [[ "$IOS_DEVICE_ONLY" != "1" ]]; then
-  LLVM_XC_ARGS+=( -library "$SIM_PACKAGE_DIR/llvm.a" -headers "$SIM_PACKAGE_DIR/llvm-headers" )
-  CLANG_XC_ARGS+=( -library "$SIM_PREFIX/lib/libclang.dylib" -headers "$SIM_PACKAGE_DIR/clang-headers" )
-fi
 LLVM_XC_ARGS+=( -output "$OUT_DIR/LLVM.xcframework" )
 CLANG_XC_ARGS+=( -output "$OUT_DIR/Clang.xcframework" )
 

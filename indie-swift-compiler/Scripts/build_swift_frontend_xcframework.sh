@@ -9,18 +9,13 @@ HEADERS_DIR="$ROOT_DIR/Native/SwiftIRGenAdapter"
 SRC_FILE="$ROOT_DIR/Native/SwiftIRGenAdapter/SwiftIRGenAdapter.cpp"
 FRAMEWORK_OUT="$OUT_DIR/SwiftFrontend.xcframework"
 EMBEDDED_IOS_LIB="${SWIFT_FRONTEND_EMBEDDED_LIB_IOS:-}"
-EMBEDDED_SIM_LIB="${SWIFT_FRONTEND_EMBEDDED_LIB_SIM:-}"
 
 HOST_BUILD="$BUILD_ROOT/native-host"
 IOS_BUILD="$BUILD_ROOT/ios"
-SIM_BUILD="$BUILD_ROOT/ios-sim"
 HOST_PREFIX="$HOST_BUILD/install"
 IOS_PREFIX="$IOS_BUILD/install"
-SIM_PREFIX="$SIM_BUILD/install"
 IOS_ADAPTER_LIB="$IOS_PREFIX/lib/libSwiftFrontendAdapter.a"
-SIM_ADAPTER_LIB="$SIM_PREFIX/lib/libSwiftFrontendAdapter.a"
 IOS_UNIFIED_LIB="$IOS_PREFIX/lib/libSwiftFrontend.a"
-SIM_UNIFIED_LIB="$SIM_PREFIX/lib/libSwiftFrontend.a"
 
 require_darwin_arm64_host
 clear_inherited_apple_build_env
@@ -28,18 +23,17 @@ configure_host_apple_cmake_flags
 configure_optional_compiler_launcher_flags
 
 rm -rf "$BUILD_ROOT" "$FRAMEWORK_OUT"
-mkdir -p "$HOST_BUILD" "$IOS_BUILD" "$SIM_BUILD" "$OUT_DIR"
+mkdir -p "$HOST_BUILD" "$IOS_BUILD" "$OUT_DIR"
 
-if [[ -z "$EMBEDDED_IOS_LIB" || -z "$EMBEDDED_SIM_LIB" ]]; then
+if [[ -z "$EMBEDDED_IOS_LIB" ]]; then
   echo "エラー: 実体同梱が必須です。"
-  echo "SWIFT_FRONTEND_EMBEDDED_LIB_IOS と SWIFT_FRONTEND_EMBEDDED_LIB_SIM を指定してください。"
+  echo "SWIFT_FRONTEND_EMBEDDED_LIB_IOS を指定してください。"
   exit 1
 fi
 
-if [[ ! -f "$EMBEDDED_IOS_LIB" || ! -f "$EMBEDDED_SIM_LIB" ]]; then
+if [[ ! -f "$EMBEDDED_IOS_LIB" ]]; then
   echo "エラー: 指定された実体ライブラリが見つかりません。"
   echo "  iOS: $EMBEDDED_IOS_LIB"
-  echo "  Sim: $EMBEDDED_SIM_LIB"
   exit 1
 fi
 
@@ -96,26 +90,7 @@ cmake --install "$IOS_BUILD"
 mv "$IOS_UNIFIED_LIB" "$IOS_ADAPTER_LIB"
 libtool -static -o "$IOS_UNIFIED_LIB" "$IOS_ADAPTER_LIB" "$EMBEDDED_IOS_LIB"
 
-configure_cross_apple_cmake_flags iphonesimulator
-sim_cmake_args=(
-  -S "$BUILD_ROOT"
-  -B "$SIM_BUILD"
-  -G Ninja
-  -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0
-  -DCMAKE_BUILD_TYPE=Release
-  -DCMAKE_INSTALL_PREFIX="$SIM_PREFIX"
-)
-sim_cmake_args+=("${APPLE_CROSS_STAGE_CMAKE_FLAGS[@]}")
-if [[ ${#CMAKE_LAUNCHER_FLAGS[@]} -gt 0 ]]; then
-  sim_cmake_args+=("${CMAKE_LAUNCHER_FLAGS[@]}")
-fi
-cmake "${sim_cmake_args[@]}"
-cmake_build "$SIM_BUILD" --target SwiftFrontendAdapter
-cmake --install "$SIM_BUILD"
-mv "$SIM_UNIFIED_LIB" "$SIM_ADAPTER_LIB"
-libtool -static -o "$SIM_UNIFIED_LIB" "$SIM_ADAPTER_LIB" "$EMBEDDED_SIM_LIB"
-
-for lib in "$IOS_UNIFIED_LIB" "$SIM_UNIFIED_LIB"; do
+for lib in "$IOS_UNIFIED_LIB"; do
   if ! nm -gU "$lib" 2>/dev/null | grep -q "swift_frontend_embedded_compile"; then
     echo "エラー: $lib に swift_frontend_embedded_compile が含まれていません。"
     exit 1
@@ -124,7 +99,6 @@ done
 
 xcodebuild_safe -create-xcframework \
   -library "$IOS_PREFIX/lib/libSwiftFrontend.a" -headers "$IOS_PREFIX/include" \
-  -library "$SIM_PREFIX/lib/libSwiftFrontend.a" -headers "$SIM_PREFIX/include" \
   -output "$FRAMEWORK_OUT"
 
 echo "作成完了: $FRAMEWORK_OUT"

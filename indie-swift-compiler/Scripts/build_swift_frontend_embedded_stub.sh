@@ -7,7 +7,6 @@ OUT_DIR="$ROOT_DIR/Artifacts/EmbeddedFrontend"
 SRC_FILE="$BUILD_ROOT/swift_frontend_embedded_stub.cpp"
 HOST_LIB="$OUT_DIR/libswift_frontend_embedded_host.a"
 IOS_LIB="$OUT_DIR/libswift_frontend_embedded_ios.a"
-SIM_LIB="$OUT_DIR/libswift_frontend_embedded_sim.a"
 
 mkdir -p "$BUILD_ROOT" "$OUT_DIR"
 
@@ -33,8 +32,4 @@ libtool -static -o "$HOST_LIB" "$BUILD_ROOT/host.o"
 xcrun -sdk iphoneos clang++ -std=c++17 -arch arm64 -c "$SRC_FILE" -o "$BUILD_ROOT/ios.o"
 libtool -static -o "$IOS_LIB" "$BUILD_ROOT/ios.o"
 
-xcrun -sdk iphonesimulator clang++ -std=c++17 -arch arm64 -c "$SRC_FILE" -o "$BUILD_ROOT/sim.o"
-libtool -static -o "$SIM_LIB" "$BUILD_ROOT/sim.o"
-
 echo "SWIFT_FRONTEND_EMBEDDED_LIB_IOS=$IOS_LIB"
-echo "SWIFT_FRONTEND_EMBEDDED_LIB_SIM=$SIM_LIB"

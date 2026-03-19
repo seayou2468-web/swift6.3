@@ -80,16 +80,15 @@ mkdir -p "$OUT_DIR" "$DIST_DIR" "$LOG_DIR"
 run_step "Swift Package tests" bash -lc "cd '$ROOT_DIR' && swift test"
 run_step "Bootstrap minimal toolchain repos" "$ROOT_DIR/Scripts/bootstrap_minimal_toolchain_repos.sh" "$SCHEME" "$TOOLCHAIN_WORKSPACE"
 
-if [[ -z "${SWIFT_FRONTEND_EMBEDDED_LIB_IOS:-}" || -z "${SWIFT_FRONTEND_EMBEDDED_LIB_SIM:-}" ]]; then
+if [[ -z "${SWIFT_FRONTEND_EMBEDDED_LIB_IOS:-}" ]]; then
   EMBEDDED_ENV="$LOG_DIR/embedded-frontend.env"
   run_step "Build embedded frontend stub libs" "${APPLE_CLEAN_ENV[@]}" bash -lc "cd '$ROOT_DIR' && ./Scripts/build_swift_frontend_embedded_stub.sh > '$EMBEDDED_ENV'"
   if [[ "$DRY_RUN" == "1" ]]; then
     export SWIFT_FRONTEND_EMBEDDED_LIB_IOS="/dry-run/libswift_frontend_embedded_ios.a"
-    export SWIFT_FRONTEND_EMBEDDED_LIB_SIM="/dry-run/libswift_frontend_embedded_sim.a"
   else
     # shellcheck disable=SC1090
     source "$EMBEDDED_ENV"
-    export SWIFT_FRONTEND_EMBEDDED_LIB_IOS SWIFT_FRONTEND_EMBEDDED_LIB_SIM
+    export SWIFT_FRONTEND_EMBEDDED_LIB_IOS
   fi
 fi
 

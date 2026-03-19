@@ -21,21 +21,18 @@ fi
 
 TOOLCHAIN_ROOT="$(cd "$(dirname "$SWIFT_FRONTEND")/.." && pwd)"
 IOS_LIB="${SWIFT_RUNTIME_IOS_LIB:-$TOOLCHAIN_ROOT/lib/swift/iphoneos/libswiftCore.a}"
-SIM_LIB="${SWIFT_RUNTIME_SIM_LIB:-$TOOLCHAIN_ROOT/lib/swift/iphonesimulator/libswiftCore.a}"
 IOS_HEADERS="$WORK_DIR/include/iphoneos"
-SIM_HEADERS="$WORK_DIR/include/iphonesimulator"
 
-if [[ ! -f "$IOS_LIB" || ! -f "$SIM_LIB" ]]; then
+if [[ ! -f "$IOS_LIB" ]]; then
   echo "Swift runtime static library が見つかりません"
   echo "  IOS: $IOS_LIB"
-  echo "  SIM: $SIM_LIB"
   exit 1
 fi
 
 mkdir -p "$OUT_DIR"
 rm -rf "$OUT_XC"
 rm -rf "$WORK_DIR"
-mkdir -p "$IOS_HEADERS" "$SIM_HEADERS"
+mkdir -p "$IOS_HEADERS"
 
 cat > "$IOS_HEADERS/SwiftRuntimeCore.h" <<'HEADER'
 #pragma once
@@ -43,15 +40,8 @@ cat > "$IOS_HEADERS/SwiftRuntimeCore.h" <<'HEADER'
 // Linked archive: libswiftCore.a
 HEADER
 
-cat > "$SIM_HEADERS/SwiftRuntimeCore.h" <<'HEADER'
-#pragma once
-// Bundled Swift runtime entry header for iOS simulator.
-// Linked archive: libswiftCore.a
-HEADER
-
 xcodebuild_safe -create-xcframework \
   -library "$IOS_LIB" -headers "$IOS_HEADERS" \
-  -library "$SIM_LIB" -headers "$SIM_HEADERS" \
   -output "$OUT_XC"
 
 echo "作成完了: $OUT_XC"
