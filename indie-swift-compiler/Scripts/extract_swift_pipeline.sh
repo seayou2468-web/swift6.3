@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -lt 1 ]]; then
-  echo "使い方: $0 <swift-repo-path>"
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+REPO_ROOT="$(cd "$ROOT_DIR/.." && pwd)"
+SWIFT_REPO="$REPO_ROOT/swift"
+OUT_DIR="$ROOT_DIR/Vendor/SwiftFrontendExtract"
+
+if [[ ! -d "$SWIFT_REPO" ]]; then
+  echo "swift checkout not found in repository: $SWIFT_REPO"
   exit 1
 fi
-
-SWIFT_REPO="$(cd "$1" && pwd)"
-ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-OUT_DIR="$ROOT_DIR/Vendor/SwiftFrontendExtract"
 
 rm -rf "$OUT_DIR"
 mkdir -p "$OUT_DIR"
@@ -24,8 +25,20 @@ copy_if_exists() {
   fi
 }
 
-# Swift -> LLVM IR 変換の主要導線（参照専用）
-copy_if_exists "lib/FrontendTool/FrontendTool.cpp"
+# Parser / AST / Sema / SILGen / SIL / SILOptimizer / IRGen の完全抽出（内蔵前提）
+copy_if_exists "include/swift/Parse/Parser.h"
+copy_if_exists "lib/Parse/ParseDecl.cpp"
+copy_if_exists "lib/Parse/ParseExpr.cpp"
+copy_if_exists "lib/Parse/ParseStmt.cpp"
+copy_if_exists "include/swift/AST/ASTContext.h"
+copy_if_exists "include/swift/AST/Module.h"
+copy_if_exists "lib/AST/ASTContext.cpp"
+copy_if_exists "lib/AST/Module.cpp"
+copy_if_exists "include/swift/Sema/ConstraintSystem.h"
+copy_if_exists "lib/Sema/TypeCheckDecl.cpp"
+copy_if_exists "lib/Sema/TypeCheckExpr.cpp"
+copy_if_exists "lib/SILGen/SILGen.cpp"
+copy_if_exists "lib/SILGen/SILGenFunction.cpp"
 copy_if_exists "lib/IRGen/IRGen.cpp"
 copy_if_exists "lib/IRGen/IRGenModule.cpp"
 copy_if_exists "lib/IRGen/GenCall.cpp"
@@ -34,10 +47,10 @@ copy_if_exists "lib/IRGen/GenFunc.cpp"
 copy_if_exists "lib/IRGen/GenMeta.cpp"
 copy_if_exists "lib/IRGen/GenProto.cpp"
 copy_if_exists "lib/IRGen/GenType.cpp"
-copy_if_exists "include/swift/IRGen/IRGen.h"
+copy_if_exists "include/swift/IRGen/IRGenSILPasses.h"
 copy_if_exists "include/swift/IRGen/IRGenPublic.h"
 
-# Swift SIL middle層（SIL最適化導線、参照専用）
+# Swift SIL middle層（SIL最適化導線、独自コンパイラへ直接同梱）
 copy_if_exists "include/swift/SIL/SILModule.h"
 copy_if_exists "include/swift/SIL/SILFunction.h"
 copy_if_exists "include/swift/SILOptimizer/PassManager/PassManager.h"
@@ -52,14 +65,15 @@ copy_if_exists "lib/SILOptimizer/PassManager/PassManager.cpp"
 copy_if_exists "lib/SILOptimizer/PassManager/Passes.cpp"
 copy_if_exists "lib/SILOptimizer/Transforms/PerformanceInliner.cpp"
 
-cat > "$OUT_DIR/EXTRACTED.md" <<MARKDOWN
-# Extracted Swift Frontend References
+cat > "$OUT_DIR/EXTRACTED.md" <<'MARKDOWN'
+# Extracted Swift Embedded Compiler Components
 
-このディレクトリは、Swift本家リポジトリから「Swift AST/SIL から LLVM IR 生成」に
-関与する主要導線を追うための参照用コピーです。
+このディレクトリは、このリポジトリ直下の `swift/` ツリーから Parser / AST / Sema / SILGen / SIL / SILOptimizer / IRGen を
+直接コピーして、独自コンパイラに内蔵するための作業コピーです。
 
-- この新規コンパイラのビルドには **使用しません**。
-- 依存切り離しのため、MiniSwiftCompilerCore は swift-frontend adapter 経路で動作します。
+- 外部の swift リポジトリパス指定は不要です。
+- `Scripts/extract_swift_pipeline.sh` は常にこのリポジトリ直下の `swift/` からコピーします。
+- 新規コンパイラは swift-frontend 実行ファイルではなく、ここでコピーした層を直接内蔵する方針です。
 MARKDOWN
 
-echo "抽出完了: $OUT_DIR"
+echo "repo-local copy complete: $OUT_DIR"

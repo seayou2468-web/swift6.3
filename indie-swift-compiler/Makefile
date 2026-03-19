@@ -41,7 +41,10 @@ define log_info
 endef
 
 # Actual Makefile
-all: LLVM.xcframework Clang.xcframework clean
+all: help
+
+help:
+	$(call log_info,manual execution only: use `make release-llvm-clang` or `make manual-release`)
 
 $(LLVM_SRC_DIR):
 	$(call log_info,preparing llvm source tree ($(LLVM_VER)))
@@ -92,11 +95,14 @@ LLVM.xcframework: LLVM-iphoneos/llvm.a
 	rm -rf llvm-headers
 
 Clang.xcframework: LLVM-iphoneos
-	$(call log_info,creating Clang framework out of llvm ($(LLVM_VER)))
-	mkdir clang-headers
-	cp -r LLVM-iphoneos/include/clang-c clang-headers/
+	$(call log_info,creating Clang framework out of llvm ($(LLVM_VER)) with clang-c and C++ headers)
+	mkdir -p clang-headers
+	if [ -d "LLVM-iphoneos/include/clang-c" ]; then cp -r LLVM-iphoneos/include/clang-c clang-headers/; fi
+	if [ -d "LLVM-iphoneos/include/clang" ]; then cp -r LLVM-iphoneos/include/clang clang-headers/; fi
+	libtool -static -o LLVM-iphoneos/lib/libclang-all.a \
+		LLVM-iphoneos/lib/libclang*.a
 	xcodebuild -create-xcframework \
-		-library "LLVM-iphoneos/lib/libclang.dylib" \
+		-library "LLVM-iphoneos/lib/libclang-all.a" \
 		-headers "clang-headers" \
 		-output Clang.xcframework
 	rm -rf clang-headers
@@ -108,5 +114,13 @@ clean:
 	rm -rf Release-iphoneos
 	rm -rf *headers
 
+release-llvm-clang: LLVM.xcframework Clang.xcframework
+	$(call log_info,packaging standalone LLVM/Clang release artifacts)
+	mkdir -p Release
+	cd Release && rm -f LLVM-$(LLVM_VER)-iphoneos.zip Clang-$(LLVM_VER)-iphoneos.zip && zip -qry LLVM-$(LLVM_VER)-iphoneos.zip ../LLVM.xcframework && zip -qry Clang-$(LLVM_VER)-iphoneos.zip ../Clang.xcframework
+
+manual-release: release-llvm-clang
+	$(call log_info,manual release artifacts are ready under Release/)
+
 clean-all: clean
-	rm -rf *.xcframework
+	rm -rf *.xcframework Release

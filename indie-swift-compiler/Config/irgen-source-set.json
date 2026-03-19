@@ -1,13 +1,18 @@
 {
-  "name": "swift-to-llvm-irgen-core",
-  "description": "Swift本家から抽出した Swift->LLVM IR 変換導線の最小ソースセット",
+  "name": "swift-irgen-full-stack-core",
+  "description": "Swift本家から抽出した AST/Sema/SIL/SILOptimizer を前提にした IRGen 最小ソースセット",
   "headers": [
+    "include/swift/IRGen/IRGenSILPasses.h",
     "include/swift/IRGen/IRGenPublic.h"
   ],
   "sources": [
     "lib/IRGen/IRGen.cpp",
     "lib/IRGen/IRGenModule.cpp",
+    "lib/IRGen/GenCall.cpp",
+    "lib/IRGen/GenDecl.cpp",
     "lib/IRGen/GenFunc.cpp",
+    "lib/IRGen/GenMeta.cpp",
+    "lib/IRGen/GenProto.cpp",
     "lib/IRGen/GenType.cpp"
   ]
 }

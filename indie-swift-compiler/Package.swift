@@ -12,6 +12,11 @@ let package = Package(
             name: "MiniSwiftCompilerCore",
             type: .dynamic,
             targets: ["MiniSwiftCompilerCore"]
+        ),
+        .library(
+            name: "MiniSwiftCompilerCoreStatic",
+            type: .static,
+            targets: ["MiniSwiftCompilerCore"]
         )
     ],
     dependencies: [],

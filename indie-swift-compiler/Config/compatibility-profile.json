@@ -1,16 +1,18 @@
 {
   "name": "swift-full-compat-lite",
-  "goal": "Swift言語互換性を優先しつつ、余分な機能を削って依存とビルド負荷を最小化する",
+  "goal": "Swift言語互換性を優先しつつ、parser/AST/Sema/SILGen/SIL/SILOptimizer/IRGen を直接内蔵して依存とビルド負荷を最小化する",
   "backend": {
-    "primary": "swift-frontend",
-    "fallback": "none"
+    "primary": "direct-embedded-extract",
+    "fallback": "llvm-clang-xcframework"
   },
   "enable": [
     "swift",
     "llvm-project",
+    "clang",
     "cmark",
     "swift-syntax",
-    "swift-llvm-bindings"
+    "swift-llvm-bindings",
+    "embedded-parser-ast-sema-silgen-sil-irgen-siloptim"
   ],
   "disable": [
     "swift-package-manager",

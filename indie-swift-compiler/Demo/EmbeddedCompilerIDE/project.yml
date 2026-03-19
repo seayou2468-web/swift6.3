@@ -1,0 +1,27 @@
+name: EmbeddedCompilerIDE
+options:
+  bundleIdPrefix: dev.indieswift
+packages:
+  MiniSwiftCompilerCore:
+    path: ../..
+targets:
+  EmbeddedCompilerIDE:
+    type: application
+    platform: iOS
+    deploymentTarget: "15.0"
+    sources:
+      - path: .
+        excludes:
+          - README.md
+          - project.yml
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.indieswift.EmbeddedCompilerIDE
+        SWIFT_VERSION: 6.0
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_CFBundleDisplayName: EmbeddedCompilerIDE
+        INFOPLIST_KEY_NSPrincipalClass: UIApplication
+    dependencies:
+      - package: MiniSwiftCompilerCore
+        product: MiniSwiftCompilerCore

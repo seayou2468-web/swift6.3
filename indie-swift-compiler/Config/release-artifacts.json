@@ -1,0 +1,22 @@
+{
+  "name": "llvm-clang-standalone-release",
+  "artifacts": [
+    {
+      "name": "LLVM.xcframework",
+      "archive": "Release/LLVM-21.1.6-iphoneos.zip",
+      "buildTarget": "LLVM.xcframework"
+    },
+    {
+      "name": "Clang.xcframework",
+      "archive": "Release/Clang-21.1.6-iphoneos.zip",
+      "buildTarget": "Clang.xcframework"
+    }
+  ],
+  "execution": {
+    "mode": "manual",
+    "entrypoints": [
+      "make manual-release",
+      "github workflow_dispatch: manual-toolchain-release.yml"
+    ]
+  }
+}
