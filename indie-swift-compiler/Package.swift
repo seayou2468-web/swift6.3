@@ -12,6 +12,14 @@ var packageTargets: [Target] = [
     )
 ]
 
+var packageProducts: [Product] = [
+    .library(
+        name: "MiniSwiftCompilerCore",
+        type: .static,
+        targets: ["MiniSwiftCompilerCore"]
+    )
+]
+
 #if os(macOS)
 packageTargets.insert(
     .executableTarget(
@@ -22,6 +30,12 @@ packageTargets.insert(
     ),
     at: 1
 )
+packageProducts.append(
+    .executable(
+        name: "EmbeddedCompilerIDE",
+        targets: ["EmbeddedCompilerIDE"]
+    )
+)
 #endif
 
 let package = Package(
@@ -30,13 +44,7 @@ let package = Package(
         .iOS(.v15),
         .macOS(.v13)
     ],
-    products: [
-        .library(
-            name: "MiniSwiftCompilerCore",
-            type: .static,
-            targets: ["MiniSwiftCompilerCore"]
-        )
-    ],
+    products: packageProducts,
     dependencies: [],
     targets: packageTargets
 )

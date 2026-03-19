@@ -36,10 +36,15 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "[ERROR] demo app target requires macOS/SwiftUI (current: $(uname -s))" >&2
   exit 1
 fi
-swift build -c release --target EmbeddedCompilerIDE
-DEMO_APP_BIN="$(find .build -type f -name EmbeddedCompilerIDE | head -n 1 || true)"
+swift build -c release --product EmbeddedCompilerIDE
+BIN_DIR="$(swift build -c release --show-bin-path)"
+DEMO_APP_BIN="$BIN_DIR/EmbeddedCompilerIDE"
 if [ -z "$DEMO_APP_BIN" ]; then
   echo "[ERROR] could not find EmbeddedCompilerIDE binary under .build" >&2
+  exit 1
+fi
+if [ ! -f "$DEMO_APP_BIN" ]; then
+  echo "[ERROR] expected demo app binary was not produced: $DEMO_APP_BIN" >&2
   exit 1
 fi
 
