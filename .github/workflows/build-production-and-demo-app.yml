@@ -9,8 +9,12 @@ jobs:
     defaults:
       run:
         working-directory: indie-swift-compiler
+    env:
+      TOOLCHAIN_SCHEME: release/6.3
     steps:
       - uses: actions/checkout@v4
+      - name: Sync minimal update-checkout repos (indie compiler)
+        run: ./Scripts/bootstrap_minimal_toolchain_repos.sh "$TOOLCHAIN_SCHEME"
       - name: Build LLVM/Clang -> MiniSwiftCompilerCore -> Demo app (guaranteed order)
         run: ./Scripts/build_production_and_demo_app_pipeline.sh
       - name: Run MiniSwiftCompilerCore tests
