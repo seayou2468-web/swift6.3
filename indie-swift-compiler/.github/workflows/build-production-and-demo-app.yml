@@ -1,0 +1,34 @@
+name: build-production-and-demo-app
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-all:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: indie-swift-compiler
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build production compiler stack
+        run: ./Scripts/build_embedded_compiler_stack.sh
+      - name: Build demo app target in same flow
+        run: swift build -c release --target EmbeddedCompilerIDE
+      - name: Run MiniSwiftCompilerCore tests
+        run: swift test
+      - name: Upload MiniSwiftCompilerCore release build
+        uses: actions/upload-artifact@v4
+        with:
+          name: MiniSwiftCompilerCore-release
+          path: indie-swift-compiler/.build
+      - name: Upload LLVM release zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: LLVM-release
+          path: indie-swift-compiler/Release/LLVM-21.1.6-iphoneos.zip
+      - name: Upload Clang release zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: Clang-release
+          path: indie-swift-compiler/Release/Clang-21.1.6-iphoneos.zip

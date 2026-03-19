@@ -14,7 +14,7 @@ struct EmbeddedCompilerIDEView: View {
           .frame(minHeight: 180)
           .overlay(RoundedRectangle(cornerRadius: 8).stroke(.secondary.opacity(0.25)))
 
-        Button("Compile & Run Hello World") {
+        Button("Compile & Run (Runtime-less)") {
           viewModel.compileAndRun()
         }
         .buttonStyle(.borderedProminent)

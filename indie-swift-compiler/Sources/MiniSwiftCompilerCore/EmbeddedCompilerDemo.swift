@@ -1,6 +1,6 @@
 import Foundation
 
-public struct EmbeddedCompilerDemoResult: Sendable, Equatable {
+public struct MiniCompilerAppExecutionResult: Sendable, Equatable {
   public let llvmIR: String
   public let diagnostics: [String]
   public let executionOutput: String
@@ -12,43 +12,58 @@ public struct EmbeddedCompilerDemoResult: Sendable, Equatable {
   }
 }
 
-public enum EmbeddedCompilerDemoExecutor {
-  public static func runHelloWorldDemo(source: String) -> String {
-    if let printedString = firstPrintedString(in: source) {
-      return printedString
+public enum MiniCompilerRuntimeLessExecutor {
+  public static func run(source: String) -> String {
+    let outputs = printedStrings(in: source)
+    if outputs.isEmpty {
+      return "No runtime-less output (print literal) was derived from the source."
     }
-    if source.contains("Hello, world") {
-      return "Hello, world!"
-    }
-    return "Demo executor could not derive runtime output from the provided source."
+    return outputs.joined(separator: "\n")
   }
 
-  private static func firstPrintedString(in source: String) -> String? {
-    guard let printRange = source.range(of: "print(\"") else { return nil }
-    let suffix = source[printRange.upperBound...]
-    guard let end = suffix.firstIndex(of: "\"") else { return nil }
-    return String(suffix[..<end])
+  private static func printedStrings(in source: String) -> [String] {
+    let pattern = #"print\("((?:\\.|[^"\\])*)"\)"#
+    guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
+
+    let nsSource = source as NSString
+    let matches = regex.matches(
+      in: source,
+      range: NSRange(location: 0, length: nsSource.length)
+    )
+
+    return matches.compactMap { match in
+      guard match.numberOfRanges > 1 else { return nil }
+      let range = match.range(at: 1)
+      guard range.location != NSNotFound else { return nil }
+      let raw = nsSource.substring(with: range)
+      return raw
+        .replacingOccurrences(of: #"\n"#, with: "\n")
+        .replacingOccurrences(of: #"\t"#, with: "\t")
+        .replacingOccurrences(of: #"\""#, with: "\"")
+        .replacingOccurrences(of: #"\\"#, with: #"\"#)
+    }
   }
 }
 
-public struct EmbeddedCompilerDemoIDE {
+public struct MiniCompilerAppService {
   public let adapter: MiniCompilerIOSAdapter
 
   public init(adapter: MiniCompilerIOSAdapter = MiniCompilerIOSAdapter()) {
     self.adapter = adapter
   }
 
-  public func compileAndRunHelloWorldDemo(
+  public func compileAndRunRuntimeLess(
     source: String,
-    moduleName: String = "EmbeddedCompilerDemo"
-  ) throws -> EmbeddedCompilerDemoResult {
+    moduleName: String = "EmbeddedCompilerApp"
+  ) throws -> MiniCompilerAppExecutionResult {
     let compileOutput = try adapter.compile(
       MiniCompilerCompileRequest(source: source, moduleName: moduleName)
     )
-    return EmbeddedCompilerDemoResult(
+
+    return MiniCompilerAppExecutionResult(
       llvmIR: compileOutput.llvmIR,
       diagnostics: compileOutput.diagnostics,
-      executionOutput: EmbeddedCompilerDemoExecutor.runHelloWorldDemo(source: source)
+      executionOutput: MiniCompilerRuntimeLessExecutor.run(source: source)
     )
   }
 }

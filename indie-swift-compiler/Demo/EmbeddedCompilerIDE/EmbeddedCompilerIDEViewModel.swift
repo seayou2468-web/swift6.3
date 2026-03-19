@@ -11,15 +11,15 @@ final class EmbeddedCompilerIDEViewModel: ObservableObject {
   @Published var diagnostics: [String] = []
   @Published var statusMessage: String = "Ready"
 
-  private let demoIDE = EmbeddedCompilerDemoIDE()
+  private let appService = MiniCompilerAppService()
 
   func compileAndRun() {
     do {
-      let result = try demoIDE.compileAndRunHelloWorldDemo(source: sourceCode)
+      let result = try appService.compileAndRunRuntimeLess(source: sourceCode)
       llvmIR = result.llvmIR
       executionOutput = result.executionOutput
       diagnostics = result.diagnostics
-      statusMessage = "Compiled and executed demo source."
+      statusMessage = "Compiled and executed runtime-less source."
     } catch {
       llvmIR = ""
       executionOutput = ""
