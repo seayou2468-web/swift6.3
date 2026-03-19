@@ -1,0 +1,7 @@
+目的はパーサー、ast、sema、silgen、sil、siloptim、irgenと、llvm&clangを内蔵したアプリを作ること。
+jitは、無しで。
+目標はこれに
+https://github.com/XITRIX/LLVM-On-iOS
+ast、sema、silgen、sil、siloptim、irgenをswiftから抽出して取り込み内蔵化して、
+llvm&clangをswift対応のに置き換えて、swiftのコンパイルに対応させること。
+
