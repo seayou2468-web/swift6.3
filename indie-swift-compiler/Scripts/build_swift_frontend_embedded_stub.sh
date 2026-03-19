@@ -4,27 +4,11 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD_ROOT="$ROOT_DIR/.build/swift-frontend-embedded-stub"
 OUT_DIR="$ROOT_DIR/Artifacts/EmbeddedFrontend"
-SRC_FILE="$BUILD_ROOT/swift_frontend_embedded_stub.cpp"
+SRC_FILE="$ROOT_DIR/Native/SwiftFrontendEmbedded/SwiftFrontendEmbedded.cpp"
 HOST_LIB="$OUT_DIR/libswift_frontend_embedded_host.a"
 IOS_LIB="$OUT_DIR/libswift_frontend_embedded_ios.a"
 
 mkdir -p "$BUILD_ROOT" "$OUT_DIR"
-
-cat > "$SRC_FILE" <<'CPP'
-extern "C" int swift_frontend_embedded_compile(
-    const char *swift_source,
-    const char *module_name,
-    const char *out_ll_path,
-    const char *target_triple,
-    const char *sdk_path) {
-  (void)swift_source;
-  (void)target_triple;
-  (void)sdk_path;
-  (void)module_name;
-  (void)out_ll_path;
-  return -200;
-}
-CPP
 
 xcrun -sdk macosx clang++ -std=c++17 -arch arm64 -c "$SRC_FILE" -o "$BUILD_ROOT/host.o"
 libtool -static -o "$HOST_LIB" "$BUILD_ROOT/host.o"

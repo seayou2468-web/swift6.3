@@ -75,6 +75,8 @@ indie-swift-compiler/
   stage API が未提供な場合のみ従来の単段 adapter にフォールバックして LLVM IR文字列を生成。
 - Swift側の実行は `swift_irgen_adapter_compile` シンボル経由（CLIフォールバックなし）。
 - `SwiftIRGenAdapter` は `swift_frontend_embedded_compile` 実体（または callback）を呼び出してIR生成。
+- `Native/SwiftFrontendEmbedded/SwiftFrontendEmbedded.cpp` で `swift-frontend` 実行ラッパーをビルドし、
+  `swift_frontend_embedded_compile` / `swift_frontend_embedded_emit_sil` 実体を提供。
 - `SwiftSILOptimizerAdapter` を追加し、抽出済み `SILOptimizer` を独自コンパイラへ埋め込むための
   middle-end 接続点を用意。
 - `SWIFT_TARGET_TRIPLE` / `SWIFT_SDK_PATH` / `Documents/sdk` の順でターゲット/SDK設定を適用。

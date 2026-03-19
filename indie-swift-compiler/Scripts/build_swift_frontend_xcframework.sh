@@ -95,6 +95,10 @@ for lib in "$IOS_UNIFIED_LIB"; do
     echo "エラー: $lib に swift_frontend_embedded_compile が含まれていません。"
     exit 1
   fi
+  if ! nm -gU "$lib" 2>/dev/null | grep -q "swift_frontend_embedded_emit_sil"; then
+    echo "エラー: $lib に swift_frontend_embedded_emit_sil が含まれていません。"
+    exit 1
+  fi
 done
 
 xcodebuild_safe -create-xcframework \

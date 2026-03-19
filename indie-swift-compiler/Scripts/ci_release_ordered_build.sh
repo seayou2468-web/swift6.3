@@ -82,7 +82,7 @@ run_step "Bootstrap minimal toolchain repos" "$ROOT_DIR/Scripts/bootstrap_minima
 
 if [[ -z "${SWIFT_FRONTEND_EMBEDDED_LIB_IOS:-}" ]]; then
   EMBEDDED_ENV="$LOG_DIR/embedded-frontend.env"
-  run_step "Build embedded frontend stub libs" "${APPLE_CLEAN_ENV[@]}" bash -lc "cd '$ROOT_DIR' && ./Scripts/build_swift_frontend_embedded_stub.sh > '$EMBEDDED_ENV'"
+  run_step "Build embedded frontend libs" "${APPLE_CLEAN_ENV[@]}" bash -lc "cd '$ROOT_DIR' && ./Scripts/build_swift_frontend_embedded_stub.sh > '$EMBEDDED_ENV'"
   if [[ "$DRY_RUN" == "1" ]]; then
     export SWIFT_FRONTEND_EMBEDDED_LIB_IOS="/dry-run/libswift_frontend_embedded_ios.a"
   else

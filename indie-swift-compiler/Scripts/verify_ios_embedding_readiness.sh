@@ -41,6 +41,10 @@ if [[ ${#frontend_libs[@]} -gt 0 ]]; then
       warn_or_fail "$lib に swift_frontend_embedded_compile が含まれていません"
       continue
     fi
+    if ! "${nm_cmd[@]}" "$lib" 2>/dev/null | grep -q 'swift_frontend_embedded_emit_sil'; then
+      warn_or_fail "$lib に swift_frontend_embedded_emit_sil が含まれていません"
+      continue
+    fi
     echo "OK: embedded frontend symbol in $lib"
   done
 fi
