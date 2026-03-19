@@ -59,27 +59,41 @@ install(TARGETS SwiftFrontendAdapter ARCHIVE DESTINATION lib)
 install(FILES $HEADERS_DIR/SwiftIRGenAdapter.h DESTINATION include)
 CMAKE
 
-cmake -S "$BUILD_ROOT" -B "$IOS_BUILD" -G Ninja \
-  -DCMAKE_SYSTEM_NAME=iOS \
-  -DCMAKE_OSX_SYSROOT=iphoneos \
-  -DCMAKE_OSX_ARCHITECTURES="$APPLE_ARCH" \
-  -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_INSTALL_PREFIX="$IOS_PREFIX" \
-  "${CMAKE_LAUNCHER_FLAGS[@]}"
+ios_cmake_args=(
+  -S "$BUILD_ROOT"
+  -B "$IOS_BUILD"
+  -G Ninja
+  -DCMAKE_SYSTEM_NAME=iOS
+  -DCMAKE_OSX_SYSROOT=iphoneos
+  -DCMAKE_OSX_ARCHITECTURES="$APPLE_ARCH"
+  -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0
+  -DCMAKE_BUILD_TYPE=Release
+  -DCMAKE_INSTALL_PREFIX="$IOS_PREFIX"
+)
+if [[ ${#CMAKE_LAUNCHER_FLAGS[@]} -gt 0 ]]; then
+  ios_cmake_args+=("${CMAKE_LAUNCHER_FLAGS[@]}")
+fi
+cmake "${ios_cmake_args[@]}"
 cmake_build "$IOS_BUILD" --target SwiftFrontendAdapter
 cmake --install "$IOS_BUILD"
 mv "$IOS_UNIFIED_LIB" "$IOS_ADAPTER_LIB"
 libtool -static -o "$IOS_UNIFIED_LIB" "$IOS_ADAPTER_LIB" "$EMBEDDED_IOS_LIB"
 
-cmake -S "$BUILD_ROOT" -B "$SIM_BUILD" -G Ninja \
-  -DCMAKE_SYSTEM_NAME=iOS \
-  -DCMAKE_OSX_SYSROOT=iphonesimulator \
-  -DCMAKE_OSX_ARCHITECTURES="$APPLE_ARCH" \
-  -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_INSTALL_PREFIX="$SIM_PREFIX" \
-  "${CMAKE_LAUNCHER_FLAGS[@]}"
+sim_cmake_args=(
+  -S "$BUILD_ROOT"
+  -B "$SIM_BUILD"
+  -G Ninja
+  -DCMAKE_SYSTEM_NAME=iOS
+  -DCMAKE_OSX_SYSROOT=iphonesimulator
+  -DCMAKE_OSX_ARCHITECTURES="$APPLE_ARCH"
+  -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0
+  -DCMAKE_BUILD_TYPE=Release
+  -DCMAKE_INSTALL_PREFIX="$SIM_PREFIX"
+)
+if [[ ${#CMAKE_LAUNCHER_FLAGS[@]} -gt 0 ]]; then
+  sim_cmake_args+=("${CMAKE_LAUNCHER_FLAGS[@]}")
+fi
+cmake "${sim_cmake_args[@]}"
 cmake_build "$SIM_BUILD" --target SwiftFrontendAdapter
 cmake --install "$SIM_BUILD"
 mv "$SIM_UNIFIED_LIB" "$SIM_ADAPTER_LIB"

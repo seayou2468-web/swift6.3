@@ -5,7 +5,7 @@ LLVM_ARCH="${LLVM_ARCH:-AArch64}"
 HOST_OS="${HOST_OS:-$(uname -s)}"
 HOST_ARCH="${HOST_ARCH:-$(uname -m)}"
 BUILD_JOBS="${BUILD_JOBS:-$(sysctl -n hw.logicalcpu 2>/dev/null || echo 8)}"
-CMAKE_LAUNCHER_FLAGS=()
+declare -a CMAKE_LAUNCHER_FLAGS=()
 
 require_darwin_arm64_host() {
   if [[ "$HOST_OS" != "Darwin" ]]; then
