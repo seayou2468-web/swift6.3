@@ -25,6 +25,24 @@ copy_if_exists() {
   fi
 }
 
+# swift-frontend 実行ファイルや driver 層は抽出対象に含めない（直接内蔵するのは中間表現生成までの層のみ）
+FORBIDDEN_PATHS=(
+  "bin/swift-frontend"
+  "libexec/swift/swift-frontend"
+  "lib/Frontend"
+  "include/swift/Frontend"
+  "tools/driver"
+)
+
+verify_forbidden_not_extracted() {
+  for forbidden in "${FORBIDDEN_PATHS[@]}"; do
+    if [[ -e "$OUT_DIR/$forbidden" ]]; then
+      echo "forbidden component was extracted: $forbidden"
+      exit 1
+    fi
+  done
+}
+
 # Parser / AST / Sema / SILGen / SIL / SILOptimizer / IRGen の完全抽出（内蔵前提）
 copy_if_exists "include/swift/Parse/Parser.h"
 copy_if_exists "lib/Parse/ParseDecl.cpp"
@@ -65,6 +83,8 @@ copy_if_exists "lib/SILOptimizer/PassManager/PassManager.cpp"
 copy_if_exists "lib/SILOptimizer/PassManager/Passes.cpp"
 copy_if_exists "lib/SILOptimizer/Transforms/PerformanceInliner.cpp"
 
+verify_forbidden_not_extracted
+
 cat > "$OUT_DIR/EXTRACTED.md" <<'MARKDOWN'
 # Extracted Swift Embedded Compiler Components
 
@@ -74,6 +94,7 @@ cat > "$OUT_DIR/EXTRACTED.md" <<'MARKDOWN'
 - 外部の swift リポジトリパス指定は不要です。
 - `Scripts/extract_swift_pipeline.sh` は常にこのリポジトリ直下の `swift/` からコピーします。
 - 新規コンパイラは swift-frontend 実行ファイルではなく、ここでコピーした層を直接内蔵する方針です。
+- `swift-frontend` 実行ファイル / Frontend / Driver 層は抽出禁止としてスクリプトで検証しています。
 MARKDOWN
 
 echo "repo-local copy complete: $OUT_DIR"

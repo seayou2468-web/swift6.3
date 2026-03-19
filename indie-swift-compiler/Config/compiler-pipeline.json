@@ -1,6 +1,6 @@
 {
   "name": "indie-swift-compiler-direct-embedded-pipeline",
-  "goal": "Swift source を完全抽出した parser/AST/Sema/SILGen/SIL/SILOptimizer/IRGen に流し LLVM へ渡す",
+  "goal": "swift-frontend 実行ファイルを使わず、抽出した parser/AST/Sema/SILGen/SIL/SILOptimizer/IRGen を独自コンパイラへ直接内蔵して LLVM へ渡す",
   "stageOrder": [
     "swift",
     "parser",

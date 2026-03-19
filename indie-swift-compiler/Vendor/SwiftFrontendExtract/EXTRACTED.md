@@ -6,3 +6,4 @@
 - 外部の swift リポジトリパス指定は不要です。
 - `Scripts/extract_swift_pipeline.sh` は常にこのリポジトリ直下の `swift/` からコピーします。
 - 新規コンパイラは swift-frontend 実行ファイルではなく、ここでコピーした層を直接内蔵する方針です。
+- `swift-frontend` 実行ファイル / Frontend / Driver 層は抽出禁止としてスクリプトで検証しています。
