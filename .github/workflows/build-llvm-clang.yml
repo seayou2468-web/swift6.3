@@ -38,7 +38,7 @@ jobs:
       - name: Fetch llvm-project with indie update-checkout flow
         run: |
           rm -rf "$TOOLCHAIN_WORKSPACE"
-          indie-swift-compiler/Scripts/bootstrap_minimal_toolchain_repos.sh "$SWIFT_SCHEME" "$TOOLCHAIN_WORKSPACE"
+          bash indie-swift-compiler/Scripts/bootstrap_minimal_toolchain_repos.sh "$SWIFT_SCHEME" "$TOOLCHAIN_WORKSPACE"
 
       - name: Verify update-checkout output
         run: |
