@@ -42,3 +42,6 @@
 - iOS アプリは `MiniSwiftCompilerCore` と上記 xcframework 群を同梱して、抽出済みパイプラインをアプリ内で利用する。
 
 - 抽出用コピーはこのリポジトリ同梱の `swift/` から `./Scripts/extract_swift_pipeline.sh` で再生成し、外部 checkout を要求しない。
+
+- 一連の手順は `./Scripts/build_embedded_compiler_stack.sh` と `build-embedded-compiler-stack.yml` で、LLVM/Clang xcframework の生成から独自コンパイラ release build まで手動実行できる。
+- `Demo/EmbeddedCompilerIDE` は iOS 組み込み用の簡易 IDE デモで、Hello World のコンパイル結果とデモ実行結果を表示する。

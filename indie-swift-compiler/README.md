@@ -69,3 +69,9 @@ LLVM と Clang への依存は許可し、それらは `LLVM.xcframework` と `C
 - LLVM/Clang 単体配布物は手動実行の `make manual-release` で `Release/` に生成する。
 
 - 抽出コピー更新は `./Scripts/extract_swift_pipeline.sh` をそのまま実行すればよく、外部 Swift リポジトリ指定は不要。
+
+
+## 6. ワークフロー
+- `./Scripts/build_embedded_compiler_stack.sh` は、`swift/` から抽出コピー更新 → `LLVM.xcframework` / `Clang.xcframework` のビルド → `MiniSwiftCompilerCore` の release build を一連で実行する。
+- GitHub Actions では `build-embedded-compiler-stack.yml` を手動実行して同じ流れを再現できる。
+- `Demo/EmbeddedCompilerIDE` には、Hello World をコンパイルして LLVM IR とデモ実行結果を表示する簡易 IDE アプリ実装を置いている。
