@@ -613,7 +613,7 @@ def main_preset():
             '--sccache can not be used with' +
             ' --cmake-c-launcher or --cmake-cxx-launcher')
 
-    build_script_args = [sys.argv[0]]
+    build_script_args = [sys.executable, os.path.abspath(sys.argv[0])]
     if args.dry_run:
         build_script_args += ["--dry-run"]
     if args.dump_config:
