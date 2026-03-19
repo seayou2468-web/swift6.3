@@ -55,6 +55,15 @@ jobs:
             ${{ runner.os }}-swift-toolchain-ccache-${{ github.ref_name }}-
             ${{ runner.os }}-swift-toolchain-ccache-
 
+      - name: Restore toolchain workspace cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/indie-swift-compiler/.toolchain-workspace
+          key: ${{ runner.os }}-swift-toolchain-workspace-${{ github.event.inputs.scheme || 'release/6.3' }}-${{ hashFiles('indie-swift-compiler/Config/minimal-update-checkout-config.json', 'indie-swift-compiler/Scripts/bootstrap_minimal_toolchain_repos.sh', 'indie-swift-compiler/Tools/sync_toolchain_repos.py') }}
+          restore-keys: |
+            ${{ runner.os }}-swift-toolchain-workspace-${{ github.event.inputs.scheme || 'release/6.3' }}-
+            ${{ runner.os }}-swift-toolchain-workspace-
+
       - name: Prime ccache stats
         run: |
           if command -v ccache >/dev/null 2>&1; then
