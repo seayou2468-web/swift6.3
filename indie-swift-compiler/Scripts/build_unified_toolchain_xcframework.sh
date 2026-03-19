@@ -30,10 +30,11 @@ EMBEDDED_IOS_LIB="${SWIFT_FRONTEND_EMBEDDED_LIB_IOS:-}"
 SILOPT_IOS_LIB="${SWIFT_SILOPTIMIZER_EMBEDDED_LIB_IOS:-}"
 RUNTIME_IOS_LIB="${SWIFT_RUNTIME_IOS_LIB:-}"
 RUNTIME_IOS_HEADERS="${SWIFT_RUNTIME_IOS_HEADERS:-}"
-APPLE_ARCH="${APPLE_ARCH:-arm64}"
-LLVM_ARCH="${LLVM_ARCH:-AArch64}"
+APPLE_ARCH="arm64"
+LLVM_ARCH="AArch64"
 HOST_OS="$(uname -s)"
 HOST_ARCH="$(uname -m)"
+BUILD_JOBS="${BUILD_JOBS:-$(sysctl -n hw.logicalcpu 2>/dev/null || echo 8)}"
 APPLE_LINKER_CMAKE_FLAGS=()
 NATIVE_LLVM_CMAKE_FLAGS=()
 
@@ -52,6 +53,10 @@ require_tool nm
 require_darwin_host() {
   if [[ "$HOST_OS" != "Darwin" ]]; then
     echo "エラー: このスクリプトは macOS ホストでのみ実行できます。検出: $HOST_OS"
+    exit 1
+  fi
+  if [[ "$HOST_ARCH" != "$APPLE_ARCH" ]]; then
+    echo "エラー: ホストアーキテクチャは $APPLE_ARCH のみ対応です。検出: $HOST_ARCH"
     exit 1
   fi
 }
@@ -82,6 +87,27 @@ configure_apple_linker_cmake_flags() {
     "-DCMAKE_SHARED_LINKER_FLAGS=-Wl,-dead_strip"
     "-DCMAKE_MODULE_LINKER_FLAGS=-Wl,-dead_strip"
   )
+}
+
+cmake_build() {
+  cmake --build "$@" --parallel "$BUILD_JOBS"
+}
+
+pick_first_available_target() {
+  local target_list="$1"
+  shift
+  local candidate
+  for candidate in "$@"; do
+    if [[ "$candidate" == "__EMPTY__" ]]; then
+      echo ""
+      return 0
+    fi
+    if printf '%s\n' "$target_list" | grep -qx "$candidate"; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+  return 1
 }
 
 prepare_llvm_package_artifacts() {
@@ -130,9 +156,9 @@ build_native_llvm_tablegen_tools() {
     -DLLVM_ENABLE_PROJECTS="clang" \
     -DCMAKE_SYSTEM_NAME=Darwin \
     -DCMAKE_OSX_SYSROOT=macosx \
-    -DCMAKE_OSX_ARCHITECTURES="$HOST_ARCH" \
+    -DCMAKE_OSX_ARCHITECTURES="$APPLE_ARCH" \
     -DCMAKE_BUILD_TYPE=Release \
-    -DLLVM_TARGETS_TO_BUILD="Native" \
+    -DLLVM_TARGETS_TO_BUILD="$LLVM_ARCH" \
     -DCLANG_INCLUDE_TESTS=OFF \
     -DCLANG_BUILD_TOOLS=ON \
     -DCLANG_ENABLE_STATIC_ANALYZER=OFF \
@@ -155,7 +181,7 @@ build_native_llvm_tablegen_tools() {
     -DLLVM_ENABLE_TERMINFO=OFF \
     -DLLVM_ENABLE_LIBXML2=OFF
 
-  cmake --build "$build_dir" --target llvm-tblgen clang-tblgen
+  cmake_build "$build_dir" --target llvm-tblgen clang-tblgen
 
   if [[ ! -x "$build_dir/bin/llvm-tblgen" || ! -x "$build_dir/bin/clang-tblgen" ]]; then
     echo "エラー: native tblgen tools の生成に失敗しました: $build_dir/bin"
@@ -186,54 +212,32 @@ build_llvm_clang_libraries() {
   fi
   if [[ ${#bootstrap_targets[@]} -gt 0 ]]; then
     echo "Prebuild bootstrap targets: ${bootstrap_targets[*]}"
-    cmake --build "$build_dir" --target "${bootstrap_targets[@]}"
+    cmake_build "$build_dir" --target "${bootstrap_targets[@]}"
   fi
 
-  local -a llvm_candidates=(llvm-libraries lib/all all)
-  local -a clang_candidates=(clang-libraries clang-cpp clang "")
-  local -a lld_candidates=(lld "")
+  local llvm_t
+  local clang_t
+  local lld_t
   local -a build_args=()
-  local tried=0
+  llvm_t="$(pick_first_available_target "$target_list" llvm-libraries lib/all all)" || llvm_t="all"
+  clang_t="$(pick_first_available_target "$target_list" clang-libraries clang-cpp clang __EMPTY__)" || clang_t=""
+  lld_t="$(pick_first_available_target "$target_list" lld __EMPTY__)" || lld_t=""
 
-  for llvm_t in "${llvm_candidates[@]}"; do
-    if [[ "$llvm_t" != "all" ]] && ! printf '%s\n' "$target_list" | grep -qx "$llvm_t"; then
-      continue
-    fi
+  build_args=(--target "$llvm_t")
+  if [[ -n "$clang_t" ]]; then
+    build_args+=("$clang_t")
+  fi
+  if [[ -n "$lld_t" ]]; then
+    build_args+=("$lld_t")
+  fi
 
-    for clang_t in "${clang_candidates[@]}"; do
-      if [[ -n "$clang_t" ]] && [[ "$clang_t" != "clang" ]] && ! printf '%s\n' "$target_list" | grep -qx "$clang_t"; then
-        continue
-      fi
-      if [[ "$clang_t" == "clang" ]] && ! printf '%s\n' "$target_list" | grep -qx 'clang'; then
-        continue
-      fi
-
-      for lld_t in "${lld_candidates[@]}"; do
-        if [[ -n "$lld_t" ]] && ! printf '%s\n' "$target_list" | grep -qx "$lld_t"; then
-          continue
-        fi
-
-        build_args=(--target "$llvm_t")
-        if [[ -n "$clang_t" ]]; then
-          build_args+=("$clang_t")
-        fi
-        if [[ -n "$lld_t" ]]; then
-          build_args+=("$lld_t")
-        fi
-
-        tried=$((tried+1))
-        echo "LLVM/Clang/LLD build attempt #$tried: ${build_args[*]}"
-        if cmake --build "$build_dir" "${build_args[@]}"; then
-          return 0
-        fi
-
-        echo "WARN: build attempt failed. trying next fallback targets..."
-      done
-    done
-  done
+  echo "LLVM/Clang/LLD build targets: ${build_args[*]}"
+  if cmake_build "$build_dir" "${build_args[@]}"; then
+    return 0
+  fi
 
   echo "WARN: no target combination succeeded, fallback to plain 'cmake --build'"
-  cmake --build "$build_dir"
+  cmake_build "$build_dir"
 }
 
 
@@ -375,7 +379,7 @@ cmake -S "$SWIFT_FRONTEND_SRC" -B "$SWIFT_FRONTEND_IOS_BUILD" -G Ninja \
   -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_INSTALL_PREFIX="$SWIFT_FRONTEND_IOS_INSTALL"
-cmake --build "$SWIFT_FRONTEND_IOS_BUILD" --target SwiftFrontendAdapter
+cmake_build "$SWIFT_FRONTEND_IOS_BUILD" --target SwiftFrontendAdapter
 cmake --install "$SWIFT_FRONTEND_IOS_BUILD"
 mv "$SWIFT_FRONTEND_IOS_INSTALL/lib/libSwiftFrontend.a" "$SWIFT_FRONTEND_IOS_INSTALL/lib/libSwiftFrontendAdapter.a"
 libtool -static \
