@@ -1,10 +1,27 @@
 // swift-tools-version: 6.0
+import Foundation
 import PackageDescription
+
+let fileManager = FileManager.default
+let packageRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+let llvmXCFrameworkPath = packageRoot.appendingPathComponent("LLVM.xcframework").path
+let clangXCFrameworkPath = packageRoot.appendingPathComponent("Clang.xcframework").path
+let hasEmbeddedToolchainXCFrameworks =
+    fileManager.fileExists(atPath: llvmXCFrameworkPath) &&
+    fileManager.fileExists(atPath: clangXCFrameworkPath)
+
+let embeddedToolchainDependencies: [Target.Dependency] =
+    hasEmbeddedToolchainXCFrameworks
+    ? [
+        "LLVMEmbedded",
+        "ClangEmbedded",
+    ]
+    : []
 
 var packageTargets: [Target] = [
     .target(
         name: "MiniSwiftCompilerCore",
-        dependencies: []
+        dependencies: embeddedToolchainDependencies
     ),
     .testTarget(
         name: "MiniSwiftCompilerCoreTests",
@@ -20,23 +37,20 @@ var packageProducts: [Product] = [
     )
 ]
 
-#if os(macOS)
-packageTargets.insert(
-    .executableTarget(
-        name: "EmbeddedCompilerIDE",
-        dependencies: ["MiniSwiftCompilerCore"],
-        path: "Demo/EmbeddedCompilerIDE",
-        exclude: ["README.md"]
-    ),
-    at: 1
-)
-packageProducts.append(
-    .executable(
-        name: "EmbeddedCompilerIDE",
-        targets: ["EmbeddedCompilerIDE"]
+if hasEmbeddedToolchainXCFrameworks {
+    packageTargets.append(
+        .binaryTarget(
+            name: "LLVMEmbedded",
+            path: "LLVM.xcframework"
+        )
     )
-)
-#endif
+    packageTargets.append(
+        .binaryTarget(
+            name: "ClangEmbedded",
+            path: "Clang.xcframework"
+        )
+    )
+}
 
 let package = Package(
     name: "IndieSwiftCompiler",

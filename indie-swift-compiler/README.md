@@ -75,6 +75,6 @@ LLVM と Clang への依存は許可し、それらは `LLVM.xcframework` と `C
 - `./Scripts/build_embedded_compiler_stack.sh` は、独自コンパイラ用の最小 `update-checkout` 同期 (`bootstrap_minimal_toolchain_repos.sh`) → `swift/` から抽出コピー更新 → `LLVM.xcframework` / `Clang.xcframework` のビルド → `MiniSwiftCompilerCore` の release build を一連で実行する。
 - 抽出対象は Parser / AST / Sema / SILGen / SIL / SILOptimizer / IRGen のみで、`swift-frontend` 実行ファイルや Frontend / Driver 層は抽出しない。
 - GitHub Actions では `build-embedded-compiler-stack.yml` を手動実行して同じ流れを再現できる。
-- `./Scripts/build_production_and_demo_app_pipeline.sh` は、独自コンパイラ用の最小 `update-checkout` 同期を先に実行したうえで、`LLVM/Clang.xcframework` ビルド → `MiniSwiftCompilerCore` ビルド → `EmbeddedCompilerIDE` ビルドを順序保証つきで実行し、`Release/DemoAppBuildInputs/` に入力成果物をステージする。
+- `./Scripts/build_production_and_demo_app_pipeline.sh` は、独自コンパイラ用の最小 `update-checkout` 同期を先に実行したうえで、`LLVM/Clang.xcframework` ビルド → `MiniSwiftCompilerCore` ビルド → `Demo/EmbeddedCompilerIDE-iOS/EmbeddedCompilerIDE.xcodeproj` の iOS アプリビルドを順序保証つきで実行し、`Release/DemoAppBuildInputs/` に入力成果物をステージする。
 - GitHub Actions では `build-production-and-demo-app.yml` を手動実行すると、workflow先頭で最小 `update-checkout` 同期を実行してから順序保証スクリプトを呼び出す同等フローを再現できる。
 - `Demo/EmbeddedCompilerIDE` には、本番 API (`MiniCompilerAppService`) を使って任意のランタイムレス Swift コードをコンパイルし、LLVM IR と実行推定結果を表示する簡易 IDE アプリ実装を置いている。

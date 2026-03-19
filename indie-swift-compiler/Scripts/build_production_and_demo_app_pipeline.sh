@@ -33,18 +33,27 @@ ensure_path ".build" "swift build output directory"
 
 echo "[5/6] building demo app target with production artifacts available"
 if [[ "$(uname -s)" != "Darwin" ]]; then
-  echo "[ERROR] demo app target requires macOS/SwiftUI (current: $(uname -s))" >&2
+  echo "[ERROR] iOS demo app target requires macOS/Xcode (current: $(uname -s))" >&2
   exit 1
 fi
-swift build -c release --product EmbeddedCompilerIDE
-BIN_DIR="$(swift build -c release --show-bin-path)"
-DEMO_APP_BIN="$BIN_DIR/EmbeddedCompilerIDE"
+DERIVED_DATA_PATH="$ROOT_DIR/.build/EmbeddedCompilerIDE-iOS"
+rm -rf "$DERIVED_DATA_PATH"
+xcodebuild \
+  -project "Demo/EmbeddedCompilerIDE-iOS/EmbeddedCompilerIDE.xcodeproj" \
+  -scheme "EmbeddedCompilerIDE" \
+  -configuration Release \
+  -sdk iphonesimulator \
+  -destination 'generic/platform=iOS Simulator' \
+  -derivedDataPath "$DERIVED_DATA_PATH" \
+  CODE_SIGNING_ALLOWED=NO \
+  build
+DEMO_APP_BIN="$DERIVED_DATA_PATH/Build/Products/Release-iphonesimulator/EmbeddedCompilerIDE.app"
 if [ -z "$DEMO_APP_BIN" ]; then
-  echo "[ERROR] could not find EmbeddedCompilerIDE binary under .build" >&2
+  echo "[ERROR] could not find EmbeddedCompilerIDE.app under DerivedData" >&2
   exit 1
 fi
-if [ ! -f "$DEMO_APP_BIN" ]; then
-  echo "[ERROR] expected demo app binary was not produced: $DEMO_APP_BIN" >&2
+if [ ! -d "$DEMO_APP_BIN" ]; then
+  echo "[ERROR] expected demo app bundle was not produced: $DEMO_APP_BIN" >&2
   exit 1
 fi
 
@@ -54,11 +63,11 @@ rm -rf "$STAGE_DIR"
 mkdir -p "$STAGE_DIR"
 cp -R LLVM.xcframework "$STAGE_DIR/"
 cp -R Clang.xcframework "$STAGE_DIR/"
-cp "$DEMO_APP_BIN" "$STAGE_DIR/EmbeddedCompilerIDE"
+cp -R "$DEMO_APP_BIN" "$STAGE_DIR/EmbeddedCompilerIDE.app"
 
 echo "production-and-demo pipeline complete"
 echo "- minimal update-checkout sync complete for scheme: $TOOLCHAIN_SCHEME"
 echo "- LLVM/Clang xcframeworks built and verified"
 echo "- MiniSwiftCompilerCore built in release mode"
-echo "- EmbeddedCompilerIDE built in release mode"
+echo "- EmbeddedCompilerIDE iOS app built in release mode"
 echo "- staged build inputs at $STAGE_DIR"

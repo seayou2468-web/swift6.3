@@ -1,5 +1,4 @@
 import SwiftUI
-import MiniSwiftCompilerCore
 
 @main
 struct EmbeddedCompilerIDEApp: App {

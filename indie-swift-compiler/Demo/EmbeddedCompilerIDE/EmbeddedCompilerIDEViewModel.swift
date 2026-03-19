@@ -1,5 +1,4 @@
 import Foundation
-import MiniSwiftCompilerCore
 
 @MainActor
 final class EmbeddedCompilerIDEViewModel: ObservableObject {
