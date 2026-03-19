@@ -1,0 +1,72 @@
+name: Build LLVM and Clang
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build-llvm-clang.yml'
+      - 'indie-swift-compiler/Makefile'
+      - 'indie-swift-compiler/Config/minimal-update-checkout-config.json'
+      - 'indie-swift-compiler/Scripts/bootstrap_minimal_toolchain_repos.sh'
+
+jobs:
+  build-ios-llvm-clang:
+    runs-on: macos-15
+    defaults:
+      run:
+        shell: bash
+        working-directory: /Users/runner/work/swift6.3/swift6.3
+    env:
+      SWIFT_SCHEME: release/6.3
+      SWIFT_WORKSPACE: /Users/runner/work/swift6.3/swift6.3/.ci/update-checkout
+      LLVM_VER: 21.1.6
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Select Xcode 26.1
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.1.app
+          xcodebuild -version
+
+      - name: Install build dependencies
+        run: |
+          brew update
+          brew install cmake ninja
+
+      - name: Checkout Swift update-checkout workspace
+        run: |
+          rm -rf "$SWIFT_WORKSPACE"
+          mkdir -p "$SWIFT_WORKSPACE"
+          git clone --depth 1 --branch "$SWIFT_SCHEME" https://github.com/swiftlang/swift.git "$SWIFT_WORKSPACE/swift"
+
+      - name: Fetch llvm-project with update-checkout
+        working-directory: /Users/runner/work/swift6.3/swift6.3/.ci/update-checkout/swift
+        run: |
+          python3 utils/update-checkout \
+            --clone \
+            --scheme "$SWIFT_SCHEME" \
+            --config /Users/runner/work/swift6.3/swift6.3/indie-swift-compiler/Config/minimal-update-checkout-config.json
+
+      - name: Prepare Makefile source layout
+        run: |
+          rm -rf indie-swift-compiler/llvm-project-${LLVM_VER}.src indie-swift-compiler/llvm
+          ln -s "$SWIFT_WORKSPACE/llvm-project" "indie-swift-compiler/llvm-project-${LLVM_VER}.src"
+          ln -s "$SWIFT_WORKSPACE/llvm-project" indie-swift-compiler/llvm
+
+      - name: Build LLVM and Clang xcframeworks
+        working-directory: /Users/runner/work/swift6.3/swift6.3/indie-swift-compiler
+        run: make all
+
+      - name: Upload LLVM.xcframework
+        uses: actions/upload-artifact@v4
+        with:
+          name: LLVM.xcframework
+          path: /Users/runner/work/swift6.3/swift6.3/indie-swift-compiler/LLVM.xcframework
+
+      - name: Upload Clang.xcframework
+        uses: actions/upload-artifact@v4
+        with:
+          name: Clang.xcframework
+          path: /Users/runner/work/swift6.3/swift6.3/indie-swift-compiler/Clang.xcframework
