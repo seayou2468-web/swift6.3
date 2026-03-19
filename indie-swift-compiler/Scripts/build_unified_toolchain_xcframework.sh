@@ -47,6 +47,18 @@ require_tool python3
 require_tool libtool
 require_tool nm
 
+clear_inherited_apple_build_flags() {
+  unset CFLAGS
+  unset CXXFLAGS
+  unset CPPFLAGS
+  unset LDFLAGS
+  unset OBJCFLAGS
+  unset OBJCXXFLAGS
+  unset CMAKE_EXE_LINKER_FLAGS
+  unset CMAKE_SHARED_LINKER_FLAGS
+  unset CMAKE_MODULE_LINKER_FLAGS
+}
+
 configure_apple_linker_cmake_flags() {
   APPLE_LINKER_CMAKE_FLAGS=(
     "-DCMAKE_EXE_LINKER_FLAGS=-Wl,-dead_strip"
@@ -264,6 +276,7 @@ rm -rf "$LLVM_NATIVE_BUILD" "$LLVM_IOS_BUILD" "$SWIFT_FRAMEWORK_BUILD" "$SWIFT_F
 mkdir -p "$LLVM_NATIVE_BUILD" "$LLVM_IOS_BUILD" "$SWIFT_FRAMEWORK_BUILD" "$SWIFT_FRONTEND_IOS_BUILD" "$SWIFT_FRONTEND_SRC"
 
 echo "[1/4] Build LLVM/Clang for iOS arm64"
+clear_inherited_apple_build_flags
 configure_apple_linker_cmake_flags
 build_native_llvm_tablegen_tools "$LLVM_SRC_DIR/llvm" "$LLVM_NATIVE_BUILD"
 cmake -S "$LLVM_SRC_DIR/llvm" -B "$LLVM_IOS_BUILD" -G Ninja \
