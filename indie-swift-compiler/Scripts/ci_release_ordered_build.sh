@@ -12,6 +12,26 @@ ALLOW_RUNTIME_FAILURE="${ALLOW_RUNTIME_FAILURE:-1}"
 VERIFY_IOS_EMBEDDING_STRICT="${VERIFY_IOS_EMBEDDING_STRICT:-0}"
 BUILD_ID="${BUILD_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
 export NSUnbufferedIO="${NSUnbufferedIO:-YES}"
+APPLE_CLEAN_ENV=(
+  env
+  -u CFLAGS
+  -u CXXFLAGS
+  -u CPPFLAGS
+  -u LDFLAGS
+  -u OBJCFLAGS
+  -u OBJCXXFLAGS
+  -u CMAKE_EXE_LINKER_FLAGS
+  -u CMAKE_SHARED_LINKER_FLAGS
+  -u CMAKE_MODULE_LINKER_FLAGS
+  -u SDKROOT
+  -u CMAKE_OSX_SYSROOT
+  -u CMAKE_OSX_ARCHITECTURES
+  -u MACOSX_DEPLOYMENT_TARGET
+  -u IPHONEOS_DEPLOYMENT_TARGET
+  -u TVOS_DEPLOYMENT_TARGET
+  -u WATCHOS_DEPLOYMENT_TARGET
+  -u XROS_DEPLOYMENT_TARGET
+)
 
 log() {
   echo "[ci-release] $*"
@@ -52,7 +72,7 @@ run_step "Bootstrap minimal toolchain repos" "$ROOT_DIR/Scripts/bootstrap_minima
 
 if [[ -z "${SWIFT_FRONTEND_EMBEDDED_LIB_IOS:-}" || -z "${SWIFT_FRONTEND_EMBEDDED_LIB_SIM:-}" ]]; then
   EMBEDDED_ENV="$LOG_DIR/embedded-frontend.env"
-  run_step "Build embedded frontend stub libs" bash -lc "cd '$ROOT_DIR' && ./Scripts/build_swift_frontend_embedded_stub.sh > '$EMBEDDED_ENV'"
+  run_step "Build embedded frontend stub libs" "${APPLE_CLEAN_ENV[@]}" bash -lc "cd '$ROOT_DIR' && ./Scripts/build_swift_frontend_embedded_stub.sh > '$EMBEDDED_ENV'"
   if [[ "$DRY_RUN" == "1" ]]; then
     export SWIFT_FRONTEND_EMBEDDED_LIB_IOS="/dry-run/libswift_frontend_embedded_ios.a"
     export SWIFT_FRONTEND_EMBEDDED_LIB_SIM="/dry-run/libswift_frontend_embedded_sim.a"
@@ -63,15 +83,15 @@ if [[ -z "${SWIFT_FRONTEND_EMBEDDED_LIB_IOS:-}" || -z "${SWIFT_FRONTEND_EMBEDDED
   fi
 fi
 
-run_step "Build unified toolchain xcframework (ordered: llvm/clang -> swift frontend lib -> core -> unified)" "$ROOT_DIR/Scripts/build_unified_toolchain_xcframework.sh" "$SCHEME"
-run_step "Build standalone compiler-rt xcframework" "$ROOT_DIR/Scripts/build_compiler_rt_xcframework.sh" "$SCHEME"
-run_step "Build standalone Swift frontend xcframework" "$ROOT_DIR/Scripts/build_swift_frontend_xcframework.sh"
+run_step "Build unified toolchain xcframework (ordered: llvm/clang -> swift frontend lib -> core -> unified)" "${APPLE_CLEAN_ENV[@]}" "$ROOT_DIR/Scripts/build_unified_toolchain_xcframework.sh" "$SCHEME"
+run_step "Build standalone compiler-rt xcframework" "${APPLE_CLEAN_ENV[@]}" "$ROOT_DIR/Scripts/build_compiler_rt_xcframework.sh" "$SCHEME"
+run_step "Build standalone Swift frontend xcframework" "${APPLE_CLEAN_ENV[@]}" "$ROOT_DIR/Scripts/build_swift_frontend_xcframework.sh"
 if [[ "$ALLOW_RUNTIME_FAILURE" == "1" ]]; then
-  if ! run_step "Build standalone Swift runtime xcframework optional" "$ROOT_DIR/Scripts/build_swift_runtime_xcframework.sh"; then
+  if ! run_step "Build standalone Swift runtime xcframework optional" "${APPLE_CLEAN_ENV[@]}" "$ROOT_DIR/Scripts/build_swift_runtime_xcframework.sh"; then
     log "WARN : Swift runtime xcframework build failed (optional step)"
   fi
 else
-  run_step "Build standalone Swift runtime xcframework" "$ROOT_DIR/Scripts/build_swift_runtime_xcframework.sh"
+  run_step "Build standalone Swift runtime xcframework" "${APPLE_CLEAN_ENV[@]}" "$ROOT_DIR/Scripts/build_swift_runtime_xcframework.sh"
 fi
 
 if [[ "$DRY_RUN" != "1" ]]; then
