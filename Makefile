@@ -1,84 +1,62 @@
-# Quick configurations
-ROOT := $(PWD)
-LLVM_VER := 21.1.6
-OS_VER := 15.0
-LLVM_ARCH := AArch64
-APPLE_ARCH := arm64
+ROOT := $(abspath .)
+SWIFT_DIR := $(ROOT)/swift
 
-# Cmake configurations
-LLVM_CMAKE_FLAGS := -G "Ninja" \
-					-DLLVM_ENABLE_PROJECTS="clang;lld" \
-					-DLLVM_TARGETS_TO_BUILD="$(LLVM_ARCH)" \
-					-DLLVM_TARGET_ARCH="$(LLVM_ARCH)" \
-					-DLLVM_DEFAULT_TARGET_TRIPLE="$(APPLE_ARCH)-apple-ios" \
-					-DLLVM_BUILD_TOOLS=OFF \
-					-DCLANG_BUILD_TOOLS=OFF \
-					-DBUILD_SHARED_LIBS=OFF \
-					-DLLVM_ENABLE_ZLIB=OFF \
-					-DLLVM_ENABLE_ZSTD=OFF \
-					-DLLVM_ENABLE_THREADS=ON \
-					-DLLVM_ENABLE_UNWIND_TABLES=OFF \
-					-DLLVM_ENABLE_EH=OFF \
-					-DLLVM_ENABLE_RTTI=ON \
-					-DLLVM_ENABLE_TERMINFO=OFF \
-					-DCMAKE_BUILD_TYPE=Release \
-					-DCMAKE_INSTALL_PREFIX="$(ROOT)/LLVM-iphoneos" \
-                    -DCMAKE_TOOLCHAIN_FILE=$(ROOT)/$(LLVM_CHECKOUT_DIR)/llvm/cmake/platforms/iOS.cmake \
-					-DLLVM_ENABLE_LIBXML2=OFF \
-					-DCLANG_ENABLE_STATIC_ANALYZER=OFF \
-					-DCLANG_ENABLE_ARCMT=OFF \
-					-DCLANG_TABLEGEN_TARGETS="$(LLVM_ARCH)" \
-					-DCMAKE_C_FLAGS="-target $(APPLE_ARCH)-apple-ios$(OS_VER)" \
-					-DCMAKE_CXX_FLAGS="-target $(APPLE_ARCH)-apple-ios$(OS_VER)" \
-					-DCMAKE_OSX_ARCHITECTURES="$(APPLE_ARCH)" \
+UPDATE_CHECKOUT_SCHEME ?= release/6.3
+UPDATE_CHECKOUT ?= python3 $(SWIFT_DIR)/utils/update-checkout --scheme $(UPDATE_CHECKOUT_SCHEME) --clone --skip-history --reset-to-remote
 
-# Helper functions
+BUILD_PRESET ?= ios_minimal_compiler_embedded
+BUILD_SUBDIR ?= ios_minimal_compiler
+ARTIFACTS_DIR ?= $(ROOT)/artifacts
+INSTALL_DESTDIR ?= $(ARTIFACTS_DIR)/install
+INSTALL_TOOLCHAIN_DIR ?= /Library/Developer/Toolchains/SwiftMinimalIOS.xctoolchain
+INSTALLED_TOOLCHAIN_ROOT := $(INSTALL_DESTDIR)$(INSTALL_TOOLCHAIN_DIR)
+CLANG_ARTIFACT_DIR ?= $(ARTIFACTS_DIR)/clang-ios-minimal
+TOOLCHAIN_STAMP := $(ARTIFACTS_DIR)/.$(BUILD_SUBDIR)-installed
+
+.PHONY: all swift-ios-minimal update-checkout swift-toolchain collect-clang-artifacts clean
+
+all: swift-ios-minimal
+
 define log_info
 	@echo "\033[32m\033[1m[*] \033[0m\033[32m$(1)\033[0m"
 endef
 
-# Actual Makefile
-all: LLVM.xcframework Clang.xcframework clean
+swift-ios-minimal: collect-clang-artifacts
 
-LLVM-iphoneos: llvm-project-$(LLVM_VER).src llvm-project-$(LLVM_VER).src/build
-	$(call log_info,building llvm ($(LLVM_VER)))
-	cd llvm-project-$(LLVM_VER).src/build; \
-		cmake --build . --target install
+update-checkout:
+	$(call log_info,syncing Swift 6.3 checkout dependencies)
+	$(UPDATE_CHECKOUT)
 
-LLVM-iphoneos/llvm.a: LLVM-iphoneos
-	$(call log_info,combining LLVM libraries into llvm.a)
-	libtool -static -o LLVM-iphoneos/llvm.a \
-		LLVM-iphoneos/lib/libLLVM*.a \
-		LLVM-iphoneos/lib/libclang*.a \
-		LLVM-iphoneos/lib/liblld*.a \
+$(TOOLCHAIN_STAMP): update-checkout
+	$(call log_info,building the minimal iOS Swift compiler toolchain with preset $(BUILD_PRESET))
+	mkdir -p "$(ARTIFACTS_DIR)"
+	rm -f "$(TOOLCHAIN_STAMP)"
+	cd "$(SWIFT_DIR)" && python3 ./utils/build-script \
+		--preset=$(BUILD_PRESET) \
+		install_destdir="$(INSTALL_DESTDIR)" \
+		install_toolchain_dir="$(INSTALL_TOOLCHAIN_DIR)"
+	@test -d "$(INSTALLED_TOOLCHAIN_ROOT)"
+	@touch "$(TOOLCHAIN_STAMP)"
 
-LLVM.xcframework: LLVM-iphoneos/llvm.a
-	$(call log_info,creating LLVM framework out of llvm ($(LLVM_VER)))
-	mkdir llvm-headers
-	cp -r LLVM-iphoneos/include/* llvm-headers/
-	rm -rf llvm-headers/clang-c
-	xcodebuild -create-xcframework \
-		-library "LLVM-iphoneos/llvm.a" \
-	 	-headers "llvm-headers" \
-	 	-output LLVM.xcframework
-	rm -rf llvm-headers
+swift-toolchain: $(TOOLCHAIN_STAMP)
 
-Clang.xcframework: LLVM-iphoneos
-	$(call log_info,creating Clang framework out of llvm ($(LLVM_VER)))
-	mkdir clang-headers
-	cp -r LLVM-iphoneos/include/clang-c clang-headers/
-	xcodebuild -create-xcframework \
-		-library "LLVM-iphoneos/lib/libclang.dylib" \
-		-headers "clang-headers" \
-		-output Clang.xcframework
-	rm -rf clang-headers
+collect-clang-artifacts: $(TOOLCHAIN_STAMP)
+	$(call log_info,collecting clang and C++ artifacts from the installed toolchain)
+	rm -rf "$(CLANG_ARTIFACT_DIR)"
+	mkdir -p "$(CLANG_ARTIFACT_DIR)/include" "$(CLANG_ARTIFACT_DIR)/lib"
+	@if [ -d "$(INSTALLED_TOOLCHAIN_ROOT)/usr/include/clang-c" ]; then \
+		rsync -a "$(INSTALLED_TOOLCHAIN_ROOT)/usr/include/clang-c" "$(CLANG_ARTIFACT_DIR)/include/"; \
+	fi
+	@if [ -d "$(INSTALLED_TOOLCHAIN_ROOT)/usr/include/c++" ]; then \
+		rsync -a "$(INSTALLED_TOOLCHAIN_ROOT)/usr/include/c++" "$(CLANG_ARTIFACT_DIR)/include/"; \
+	fi
+	@if [ -d "$(INSTALLED_TOOLCHAIN_ROOT)/usr/lib/clang" ]; then \
+		rsync -a "$(INSTALLED_TOOLCHAIN_ROOT)/usr/lib/clang" "$(CLANG_ARTIFACT_DIR)/lib/"; \
+	fi
+	@find "$(INSTALLED_TOOLCHAIN_ROOT)/usr/lib" -maxdepth 1 \
+		\( -name 'libclang*' -o -name 'libc++*' -o -name 'libc++abi*' -o -name 'libunwind*' \) \
+		-exec cp -f {} "$(CLANG_ARTIFACT_DIR)/lib/" \\;
 
 clean:
-	$(call log_info,cleaning up)
-	rm -rf llvm*
-	rm -rf LLVM-iphoneos
-	rm -rf Release-iphoneos
-	rm -rf *headers
-
-clean-all: clean
-	rm -rf *.xcframework
+	$(call log_info,cleaning generated artifacts)
+	rm -rf "$(ARTIFACTS_DIR)"
