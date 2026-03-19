@@ -9,6 +9,7 @@ TOOLCHAIN_WORKSPACE="${TOOLCHAIN_WORKSPACE:-$ROOT_DIR/.toolchain-workspace}"
 LLVM_SRC_DIR="$TOOLCHAIN_WORKSPACE/llvm-project"
 OUT_DIR="$ROOT_DIR/Artifacts"
 OUT_XC="$OUT_DIR/CompilerRT.xcframework"
+DYNAMIC_OUT_XC="$OUT_DIR/CompilerRTDylib.xcframework"
 IOS_DEVICE_ONLY="${IOS_DEVICE_ONLY:-1}"
 
 NATIVE_BUILD="$WORK_DIR/native-host"
@@ -18,6 +19,10 @@ IOS_INSTALL="$IOS_BUILD/install"
 SIM_INSTALL="$SIM_BUILD/install"
 IOS_HEADERS="$WORK_DIR/headers/ios"
 SIM_HEADERS="$WORK_DIR/headers/sim"
+IOS_DYLIB_HEADERS="$WORK_DIR/dylib-headers/ios"
+SIM_DYLIB_HEADERS="$WORK_DIR/dylib-headers/sim"
+IOS_DYLIB_DIR="$WORK_DIR/dylibs/ios"
+SIM_DYLIB_DIR="$WORK_DIR/dylibs/sim"
 
 require_tool() { command -v "$1" >/dev/null 2>&1 || { echo "必要ツール不足: $1"; exit 1; }; }
 require_tool cmake
@@ -38,10 +43,10 @@ if [[ ! -d "$LLVM_SRC_DIR/llvm" ]]; then
   exit 1
 fi
 
-rm -rf "$NATIVE_BUILD" "$IOS_BUILD" "$SIM_BUILD" "$IOS_HEADERS" "$SIM_HEADERS" "$OUT_XC"
-mkdir -p "$NATIVE_BUILD" "$IOS_BUILD" "$IOS_HEADERS"
+rm -rf "$NATIVE_BUILD" "$IOS_BUILD" "$SIM_BUILD" "$IOS_HEADERS" "$SIM_HEADERS" "$IOS_DYLIB_HEADERS" "$SIM_DYLIB_HEADERS" "$IOS_DYLIB_DIR" "$SIM_DYLIB_DIR" "$OUT_XC" "$DYNAMIC_OUT_XC"
+mkdir -p "$NATIVE_BUILD" "$IOS_BUILD" "$IOS_HEADERS" "$IOS_DYLIB_HEADERS" "$IOS_DYLIB_DIR"
 if [[ "$IOS_DEVICE_ONLY" != "1" ]]; then
-  mkdir -p "$SIM_BUILD" "$SIM_HEADERS"
+  mkdir -p "$SIM_BUILD" "$SIM_HEADERS" "$SIM_DYLIB_HEADERS" "$SIM_DYLIB_DIR"
 fi
 
 build_native_llvm_tablegen_tools() {
@@ -167,6 +172,21 @@ collect_compiler_rt() {
   libtool -static -o "$out_lib" "${libs[@]}"
 }
 
+collect_compiler_rt_dylibs() {
+  local install_dir="$1"
+  local out_dir="$2"
+  local -a dylibs=()
+  while IFS= read -r dylib_path; do
+    dylibs+=("$dylib_path")
+  done < <(find "$install_dir" -type f -name 'libclang_rt*.dylib' | sort)
+
+  rm -rf "$out_dir"
+  mkdir -p "$out_dir"
+  for dylib_path in "${dylibs[@]}"; do
+    cp "$dylib_path" "$out_dir/"
+  done
+}
+
 build_native_llvm_tablegen_tools "$LLVM_SRC_DIR/llvm" "$NATIVE_BUILD"
 configure_compiler_rt "$IOS_BUILD" "$IOS_INSTALL" iphoneos "$APPLE_ARCH"
 build_compiler_rt "$IOS_BUILD"
@@ -177,11 +197,22 @@ cat > "$IOS_HEADERS/CompilerRT.h" <<'HDR'
 #pragma once
 // Aggregated compiler-rt archive for iOS device.
 HDR
+cat > "$IOS_DYLIB_HEADERS/CompilerRTDylib.h" <<'HDR'
+#pragma once
+// Collected compiler-rt dylibs for iOS device.
+HDR
+collect_compiler_rt_dylibs "$IOS_INSTALL" "$IOS_DYLIB_DIR"
 
 XC_ARGS=(
   -create-xcframework
   -library "$IOS_LIB_COMBINED" -headers "$IOS_HEADERS"
 )
+DYNAMIC_XC_ARGS=( -create-xcframework )
+for dylib_path in "$IOS_DYLIB_DIR"/libclang_rt*.dylib; do
+  if [[ -f "$dylib_path" ]]; then
+    DYNAMIC_XC_ARGS+=( -library "$dylib_path" -headers "$IOS_DYLIB_HEADERS" )
+  fi
+done
 
 if [[ "$IOS_DEVICE_ONLY" != "1" ]]; then
   configure_compiler_rt "$SIM_BUILD" "$SIM_INSTALL" iphonesimulator "$APPLE_ARCH"
@@ -193,10 +224,28 @@ if [[ "$IOS_DEVICE_ONLY" != "1" ]]; then
 #pragma once
 // Aggregated compiler-rt archive for iOS simulator.
 HDR
+  cat > "$SIM_DYLIB_HEADERS/CompilerRTDylib.h" <<'HDR'
+#pragma once
+// Collected compiler-rt dylibs for iOS simulator.
+HDR
+  collect_compiler_rt_dylibs "$SIM_INSTALL" "$SIM_DYLIB_DIR"
   XC_ARGS+=( -library "$SIM_LIB_COMBINED" -headers "$SIM_HEADERS" )
+  for dylib_path in "$SIM_DYLIB_DIR"/libclang_rt*.dylib; do
+    if [[ -f "$dylib_path" ]]; then
+      DYNAMIC_XC_ARGS+=( -library "$dylib_path" -headers "$SIM_DYLIB_HEADERS" )
+    fi
+  done
 fi
 
 XC_ARGS+=( -output "$OUT_XC" )
 xcodebuild_safe "${XC_ARGS[@]}"
+
+if [[ ${#DYNAMIC_XC_ARGS[@]} -gt 1 ]]; then
+  DYNAMIC_XC_ARGS+=( -output "$DYNAMIC_OUT_XC" )
+  xcodebuild_safe "${DYNAMIC_XC_ARGS[@]}"
+  echo "作成完了: $DYNAMIC_OUT_XC"
+else
+  echo "警告: libclang_rt.dylib は見つからなかったため CompilerRTDylib.xcframework は生成しません"
+fi
 
 echo "作成完了: $OUT_XC"

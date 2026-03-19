@@ -11,8 +11,10 @@ FRAMEWORK_OUT="$OUT_DIR/SwiftFrontend.xcframework"
 EMBEDDED_IOS_LIB="${SWIFT_FRONTEND_EMBEDDED_LIB_IOS:-}"
 EMBEDDED_SIM_LIB="${SWIFT_FRONTEND_EMBEDDED_LIB_SIM:-}"
 
+HOST_BUILD="$BUILD_ROOT/native-host"
 IOS_BUILD="$BUILD_ROOT/ios"
 SIM_BUILD="$BUILD_ROOT/ios-sim"
+HOST_PREFIX="$HOST_BUILD/install"
 IOS_PREFIX="$IOS_BUILD/install"
 SIM_PREFIX="$SIM_BUILD/install"
 IOS_ADAPTER_LIB="$IOS_PREFIX/lib/libSwiftFrontendAdapter.a"
@@ -22,11 +24,11 @@ SIM_UNIFIED_LIB="$SIM_PREFIX/lib/libSwiftFrontend.a"
 
 require_darwin_arm64_host
 clear_inherited_apple_build_env
-configure_cross_apple_cmake_flags iphoneos
+configure_host_apple_cmake_flags
 configure_optional_compiler_launcher_flags
 
 rm -rf "$BUILD_ROOT" "$FRAMEWORK_OUT"
-mkdir -p "$IOS_BUILD" "$SIM_BUILD" "$OUT_DIR"
+mkdir -p "$HOST_BUILD" "$IOS_BUILD" "$SIM_BUILD" "$OUT_DIR"
 
 if [[ -z "$EMBEDDED_IOS_LIB" || -z "$EMBEDDED_SIM_LIB" ]]; then
   echo "エラー: 実体同梱が必須です。"
@@ -60,6 +62,22 @@ install(TARGETS SwiftFrontendAdapter ARCHIVE DESTINATION lib)
 install(FILES $HEADERS_DIR/SwiftIRGenAdapter.h DESTINATION include)
 CMAKE
 
+host_cmake_args=(
+  -S "$BUILD_ROOT"
+  -B "$HOST_BUILD"
+  -G Ninja
+  -DCMAKE_BUILD_TYPE=Release
+  -DCMAKE_INSTALL_PREFIX="$HOST_PREFIX"
+)
+host_cmake_args+=("${APPLE_HOST_STAGE_CMAKE_FLAGS[@]}")
+if [[ ${#CMAKE_LAUNCHER_FLAGS[@]} -gt 0 ]]; then
+  host_cmake_args+=("${CMAKE_LAUNCHER_FLAGS[@]}")
+fi
+cmake "${host_cmake_args[@]}"
+cmake_build "$HOST_BUILD" --target SwiftFrontendAdapter
+cmake --install "$HOST_BUILD"
+
+configure_cross_apple_cmake_flags iphoneos
 ios_cmake_args=(
   -S "$BUILD_ROOT"
   -B "$IOS_BUILD"

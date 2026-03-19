@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 source "$ROOT_DIR/Scripts/apple_build_common.sh"
 BUILD_DIR="$ROOT_DIR/.build/xcframework"
+HOST_DERIVED_DATA="$BUILD_DIR/DerivedDataHost"
 DEVICE_ARCHIVE="$BUILD_DIR/ios_devices.xcarchive"
 SIM_ARCHIVE="$BUILD_DIR/ios_simulator.xcarchive"
 OUTPUT_DIR="$ROOT_DIR/Artifacts"
@@ -14,6 +15,13 @@ clear_inherited_apple_build_env
 
 rm -rf "$BUILD_DIR" "$OUTPUT_DIR/$FRAMEWORK_NAME.xcframework"
 mkdir -p "$BUILD_DIR" "$OUTPUT_DIR"
+
+xcodebuild_safe build \
+  -scheme "$FRAMEWORK_NAME" \
+  -destination "platform=macOS" \
+  -derivedDataPath "$HOST_DERIVED_DATA" \
+  ARCHS="$APPLE_ARCH" \
+  ONLY_ACTIVE_ARCH=YES
 
 xcodebuild_safe archive \
   -scheme "$FRAMEWORK_NAME" \

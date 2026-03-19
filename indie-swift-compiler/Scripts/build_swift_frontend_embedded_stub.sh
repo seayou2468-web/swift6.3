@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD_ROOT="$ROOT_DIR/.build/swift-frontend-embedded-stub"
 OUT_DIR="$ROOT_DIR/Artifacts/EmbeddedFrontend"
 SRC_FILE="$BUILD_ROOT/swift_frontend_embedded_stub.cpp"
+HOST_LIB="$OUT_DIR/libswift_frontend_embedded_host.a"
 IOS_LIB="$OUT_DIR/libswift_frontend_embedded_ios.a"
 SIM_LIB="$OUT_DIR/libswift_frontend_embedded_sim.a"
 
@@ -25,6 +26,9 @@ extern "C" int swift_frontend_embedded_compile(
   return -200;
 }
 CPP
+
+xcrun -sdk macosx clang++ -std=c++17 -arch arm64 -c "$SRC_FILE" -o "$BUILD_ROOT/host.o"
+libtool -static -o "$HOST_LIB" "$BUILD_ROOT/host.o"
 
 xcrun -sdk iphoneos clang++ -std=c++17 -arch arm64 -c "$SRC_FILE" -o "$BUILD_ROOT/ios.o"
 libtool -static -o "$IOS_LIB" "$BUILD_ROOT/ios.o"
