@@ -49,11 +49,10 @@ jobs:
             --scheme "$SWIFT_SCHEME" \
             --config /Users/runner/work/swift6.3/swift6.3/indie-swift-compiler/Config/minimal-update-checkout-config.json
 
-      - name: Prepare Makefile source layout
+      - name: Verify update-checkout output
         run: |
-          rm -rf indie-swift-compiler/llvm-project-${LLVM_VER}.src indie-swift-compiler/llvm
-          ln -s "$SWIFT_WORKSPACE/llvm-project" "indie-swift-compiler/llvm-project-${LLVM_VER}.src"
-          ln -s "$SWIFT_WORKSPACE/llvm-project" indie-swift-compiler/llvm
+          test -d "$SWIFT_WORKSPACE/llvm-project"
+          test -d "$SWIFT_WORKSPACE/llvm-project/llvm"
 
       - name: Build LLVM and Clang xcframeworks
         working-directory: /Users/runner/work/swift6.3/swift6.3/indie-swift-compiler

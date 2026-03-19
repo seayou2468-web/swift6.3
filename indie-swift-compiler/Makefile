@@ -4,6 +4,9 @@ LLVM_VER := 21.1.6
 OS_VER := 15.0
 LLVM_ARCH := AArch64
 APPLE_ARCH := arm64
+LLVM_SRC_DIR := llvm-project-$(LLVM_VER).src
+LLVM_FALLBACK_SRC_DIR := ../.ci/update-checkout/llvm-project
+LLVM_CHECKOUT_DIR := llvm
 
 # Cmake configurations
 LLVM_CMAKE_FLAGS := -G "Ninja" \
@@ -23,7 +26,7 @@ LLVM_CMAKE_FLAGS := -G "Ninja" \
 					-DLLVM_ENABLE_TERMINFO=OFF \
 					-DCMAKE_BUILD_TYPE=Release \
 					-DCMAKE_INSTALL_PREFIX="$(ROOT)/LLVM-iphoneos" \
-					-DCMAKE_TOOLCHAIN_FILE=llvm/llvm/cmake/platforms/iOS.cmake \
+					-DCMAKE_TOOLCHAIN_FILE=$(LLVM_CHECKOUT_DIR)/llvm/cmake/platforms/iOS.cmake \
 					-DLLVM_ENABLE_LIBXML2=OFF \
 					-DCLANG_ENABLE_STATIC_ANALYZER=OFF \
 					-DCLANG_ENABLE_ARCMT=OFF \
@@ -40,18 +43,34 @@ endef
 # Actual Makefile
 all: LLVM.xcframework Clang.xcframework clean
 
-llvm-project-$(LLVM_VER).src/build:
+$(LLVM_SRC_DIR):
+	$(call log_info,preparing llvm source tree ($(LLVM_VER)))
+	@if [ -d "$(LLVM_FALLBACK_SRC_DIR)" ]; then \
+		rm -rf "$(LLVM_SRC_DIR)"; \
+		cp -R "$(LLVM_FALLBACK_SRC_DIR)" "$(LLVM_SRC_DIR)"; \
+	else \
+		echo "llvm source checkout not found: $(LLVM_FALLBACK_SRC_DIR)"; \
+		echo "run the workflow's update-checkout step or place llvm-project there first"; \
+		exit 1; \
+	fi
+
+$(LLVM_CHECKOUT_DIR): $(LLVM_SRC_DIR)
+	$(call log_info,preparing llvm checkout alias)
+	rm -rf "$(LLVM_CHECKOUT_DIR)"
+	ln -s "$(LLVM_SRC_DIR)" "$(LLVM_CHECKOUT_DIR)"
+
+$(LLVM_SRC_DIR)/build: $(LLVM_SRC_DIR) $(LLVM_CHECKOUT_DIR)
 	$(call log_info,preparing llvm ($(LLVM_VER)))
-	mkdir llvm-project-$(LLVM_VER).src/build
+	mkdir "$(LLVM_SRC_DIR)/build"
 	$(call log_info,configuring llvm ($(LLVM_VER)))
-	cd llvm-project-$(LLVM_VER).src/build; \
+	cd "$(LLVM_SRC_DIR)/build"; \
 	    cmake $(LLVM_CMAKE_FLAGS) ../llvm
 	$(call log_info,patching configuration of llvm ($(LLVM_VER)))
-	sed -i.bak 's/^HAVE_FFI_CALL:INTERNAL=/HAVE_FFI_CALL:INTERNAL=1/g' llvm-project-$(LLVM_VER).src/build/CMakeCache.txt
+	sed -i.bak 's/^HAVE_FFI_CALL:INTERNAL=/HAVE_FFI_CALL:INTERNAL=1/g' "$(LLVM_SRC_DIR)/build/CMakeCache.txt"
 
-LLVM-iphoneos: llvm-project-$(LLVM_VER).src llvm-project-$(LLVM_VER).src/build
+LLVM-iphoneos: $(LLVM_SRC_DIR) $(LLVM_SRC_DIR)/build
 	$(call log_info,building llvm ($(LLVM_VER)))
-	cd llvm-project-$(LLVM_VER).src/build; \
+	cd "$(LLVM_SRC_DIR)/build"; \
 		cmake --build . --target install
 
 LLVM-iphoneos/llvm.a: LLVM-iphoneos
