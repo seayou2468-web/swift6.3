@@ -10,8 +10,8 @@
 1. **ビルド時に最小ツールチェーンを同梱**
    - `swift-frontend`
    - `SILOptimizer`
-   - `llvm-project`（必要なライブラリのみ）
-   - `cmark`, `swift-syntax`, `swift-llvm-bindings`
+   - `llvm-project`
+   - `swift-syntax`, `swift-llvm-bindings`
 2. **アプリ実行時はローカルのみ**
    - `swift-frontend` は raw SIL 生成までを担当
    - `MiniCompiler` は `swift-frontend -> SILOptimizer(mandatory) -> SILOptimizer(performance) -> IRGen` の段階実行を優先
@@ -19,9 +19,6 @@
    - サーバー通信なし
 3. **実行モデルを分離**
    - `コンパイル(ソース->IR)` と `実行` を分離し、iOS制約に抵触しない運用を選ぶ
-4. **検証導線を保持**
-   - `verify_swift_siloptimizer_to_irgen_pipeline.sh` で
-     `Swift -> Full SILOptimizer -> optimized SIL -> IRGen -> 実行` をホスト環境で継続確認する
 
 ## 重要な制約
 
@@ -30,8 +27,8 @@
 
 ## このリポジトリでの位置づけ
 
-- `MiniCompiler` は `swiftFrontend` を入口に、2層の `SILOptimizer` を経て `IRGen` へ進む。
+- `MiniCompiler` は `swiftFrontend` を入口に、2層の `SILOptimizer` を経て `IRGen`でLLVM IRを生成し、LLVMへ進む。
 - 構成マニフェスト `Config/compiler-pipeline.json` で
-  `swift -> swift-frontend -> sil-optimizer-mandatory -> sil-optimizer-performance -> irgen`
+  `swift -> swift-frontend -> sil-optimizer-mandatory -> sil-optimizer-performance -> irgen -> llvm`
   を固定化する。
 - `compatibility-profile.json` で依存/機能削減ポリシーを管理する。
