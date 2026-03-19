@@ -40,3 +40,5 @@
 - リリース成果物は `LLVM.xcframework` と `Clang.xcframework` をそれぞれ zip 化して配布する。
 - 自動実行ではなく、`make manual-release` または GitHub Actions の `workflow_dispatch` から手動で生成する。
 - iOS アプリは `MiniSwiftCompilerCore` と上記 xcframework 群を同梱して、抽出済みパイプラインをアプリ内で利用する。
+
+- 抽出用コピーはこのリポジトリ同梱の `swift/` から `./Scripts/extract_swift_pipeline.sh` で再生成し、外部 checkout を要求しない。

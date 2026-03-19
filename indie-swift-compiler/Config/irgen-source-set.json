@@ -2,7 +2,7 @@
   "name": "swift-irgen-full-stack-core",
   "description": "Swift本家から抽出した AST/Sema/SIL/SILOptimizer を前提にした IRGen 最小ソースセット",
   "headers": [
-    "include/swift/IRGen/IRGen.h",
+    "include/swift/IRGen/IRGenSILPasses.h",
     "include/swift/IRGen/IRGenPublic.h"
   ],
   "sources": [

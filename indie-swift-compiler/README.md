@@ -67,3 +67,5 @@ LLVM と Clang への依存は許可し、それらは `LLVM.xcframework` と `C
 - SwiftPM では `MiniSwiftCompilerCore` (dynamic) または `MiniSwiftCompilerCoreStatic` (static) を利用できる。
 - アプリ側では `MiniCompilerIOSAdapter` と `MiniCompilerToolchainLayout` を使って `SWIFT_RESOURCE_DIR` / `SWIFT_SDK_PATH` / `SWIFT_TARGET_TRIPLE` を設定し、抽出済みコンパイラを直接呼び出せる。
 - LLVM/Clang 単体配布物は手動実行の `make manual-release` で `Release/` に生成する。
+
+- 抽出コピー更新は `./Scripts/extract_swift_pipeline.sh` をそのまま実行すればよく、外部 Swift リポジトリ指定は不要。

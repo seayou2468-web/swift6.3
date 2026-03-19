@@ -1,7 +1,8 @@
-# Extracted Swift Frontend References
+# Extracted Swift Embedded Compiler Components
 
-このディレクトリは、Swift本家リポジトリから「Swift AST/SIL から LLVM IR 生成」に
-関与する主要導線を追うための参照用コピーです。
+このディレクトリは、このリポジトリ直下の `swift/` ツリーから Parser / AST / Sema / SILGen / SIL / SILOptimizer / IRGen を
+直接コピーして、独自コンパイラに内蔵するための作業コピーです。
 
-- この新規コンパイラのビルドには **使用しません**。
-- 依存切り離しのため、MiniSwiftCompilerCore は SwiftSyntax のみで動作します。
+- 外部の swift リポジトリパス指定は不要です。
+- `Scripts/extract_swift_pipeline.sh` は常にこのリポジトリ直下の `swift/` からコピーします。
+- 新規コンパイラは swift-frontend 実行ファイルではなく、ここでコピーした層を直接内蔵する方針です。

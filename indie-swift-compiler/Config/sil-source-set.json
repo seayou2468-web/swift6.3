@@ -5,7 +5,7 @@
     "include/swift/Parse/Parser.h",
     "include/swift/AST/ASTContext.h",
     "include/swift/AST/Module.h",
-    "include/swift/Sema/TypeChecker.h",
+    "include/swift/Sema/ConstraintSystem.h",
     "include/swift/SIL/SILModule.h",
     "include/swift/SIL/SILFunction.h",
     "include/swift/SILOptimizer/PassManager/PassManager.h",
