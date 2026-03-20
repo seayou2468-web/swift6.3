@@ -160,3 +160,4 @@ class CMarkTestCase(unittest.TestCase):
             cmark.build(host_target=self.host.name)
 
         self.assertIn("-DCMARK_TESTS=OFF", list(cmark.cmake_options))
+        self.assertIn("-DBUILD_TESTING=OFF", list(cmark.cmake_options))
