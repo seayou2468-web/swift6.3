@@ -11,13 +11,15 @@ on:
       - swift/utils/build-presets.ini
       - swift/utils/update_checkout/update_checkout/update_checkout.py
       - swift/utils/update_checkout/update_checkout/cli_arguments.py
+      - scripts/ensure_exec_bits.py
 
 jobs:
-  build-toolchain:
+  build-toolchain-prereqs:
     runs-on: macos-latest
     env:
       XCODE_VERSION: 26.1.1
       UPDATE_CHECKOUT_SCHEME: release/6.3
+      BUILD_PRESET: ios_minimal_compiler_embedded
       BUILD_SUBDIR: ios_minimal_compiler
 
     steps:
@@ -53,16 +55,16 @@ jobs:
           restore-keys: |
             update-checkout-${{ runner.os }}-xcode-${{ env.XCODE_VERSION }}-${{ env.UPDATE_CHECKOUT_SCHEME }}-
 
-      - name: Restore toolchain build cache
-        id: restore-toolchain-build-cache
+      - name: Restore toolchain prereq cache
+        id: restore-toolchain-prereq-cache
         uses: actions/cache/restore@v4
         with:
           path: |
             build
             artifacts/install
-          key: toolchain-build-${{ runner.os }}-xcode-${{ env.XCODE_VERSION }}-${{ hashFiles('Makefile', 'swift/utils/build-presets.ini', '.github/workflows/build-ios-minimal-swift-compiler-staged.yml', 'swift/utils/update_checkout/update_checkout/update_checkout.py', 'swift/utils/update_checkout/update_checkout/cli_arguments.py') }}
+          key: toolchain-prereqs-${{ runner.os }}-xcode-${{ env.XCODE_VERSION }}-${{ hashFiles('Makefile', 'swift/utils/build-presets.ini', '.github/workflows/build-ios-minimal-swift-compiler-staged.yml', 'swift/utils/update_checkout/update_checkout/update_checkout.py', 'swift/utils/update_checkout/update_checkout/cli_arguments.py') }}
           restore-keys: |
-            toolchain-build-${{ runner.os }}-xcode-${{ env.XCODE_VERSION }}-
+            toolchain-prereqs-${{ runner.os }}-xcode-${{ env.XCODE_VERSION }}-
 
       - name: Ensure swift/utils scripts are executable
         run: python3 ./scripts/ensure_exec_bits.py --root ./swift/utils
@@ -70,8 +72,29 @@ jobs:
       - name: Update checkout to Swift 6.3-compatible revisions
         run: python3 ./swift/utils/update-checkout --scheme "${UPDATE_CHECKOUT_SCHEME}" --clone --skip-history --skip-tags --reset-to-remote --skip-repository swift
 
-      - name: Build the minimal iOS Swift compiler toolchain
-        run: "make swift-toolchain UPDATE_CHECKOUT=: BUILD_JOBS=$(sysctl -n hw.logicalcpu) BUILD_SUBDIR=${BUILD_SUBDIR}"
+      - name: Build cmark prerequisite
+        run: |
+          python3 ./swift/utils/build-script \
+            --preset="${BUILD_PRESET}" \
+            --only-execute=macosx-arm64-cmark-build
+
+      - name: Install cmark prerequisite
+        run: |
+          python3 ./swift/utils/build-script \
+            --preset="${BUILD_PRESET}" \
+            --only-execute=macosx-arm64-cmark-install
+
+      - name: Build LLVM prerequisite
+        run: |
+          python3 ./swift/utils/build-script \
+            --preset="${BUILD_PRESET}" \
+            --only-execute=macosx-arm64-llvm-build
+
+      - name: Install LLVM prerequisite
+        run: |
+          python3 ./swift/utils/build-script \
+            --preset="${BUILD_PRESET}" \
+            --only-execute=macosx-arm64-llvm-install
 
       - name: Save update-checkout source cache
         if: success() && steps.restore-update-checkout-cache.outputs.cache-hit != 'true'
@@ -95,14 +118,67 @@ jobs:
             wasmkit
           key: update-checkout-${{ runner.os }}-xcode-${{ env.XCODE_VERSION }}-${{ env.UPDATE_CHECKOUT_SCHEME }}-${{ hashFiles('swift/utils/update_checkout/update-checkout-config.json', 'swift/utils/update_checkout/update_checkout/update_checkout.py', 'swift/utils/update_checkout/update_checkout/cli_arguments.py') }}
 
-      - name: Save toolchain build cache
-        if: success() && steps.restore-toolchain-build-cache.outputs.cache-hit != 'true'
+      - name: Save toolchain prereq cache
+        if: success() && steps.restore-toolchain-prereq-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: |
             build
             artifacts/install
-          key: toolchain-build-${{ runner.os }}-xcode-${{ env.XCODE_VERSION }}-${{ hashFiles('Makefile', 'swift/utils/build-presets.ini', '.github/workflows/build-ios-minimal-swift-compiler-staged.yml', 'swift/utils/update_checkout/update_checkout/update_checkout.py', 'swift/utils/update_checkout/update_checkout/cli_arguments.py') }}
+          key: toolchain-prereqs-${{ runner.os }}-xcode-${{ env.XCODE_VERSION }}-${{ hashFiles('Makefile', 'swift/utils/build-presets.ini', '.github/workflows/build-ios-minimal-swift-compiler-staged.yml', 'swift/utils/update_checkout/update_checkout/update_checkout.py', 'swift/utils/update_checkout/update_checkout/cli_arguments.py') }}
+
+      - name: Upload prereq build state
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: swift-ios-minimal-toolchain-prereqs
+          path: |
+            build
+            artifacts/install
+          if-no-files-found: error
+
+  build-toolchain-swift:
+    runs-on: macos-latest
+    needs: build-toolchain-prereqs
+    env:
+      XCODE_VERSION: 26.1.1
+      BUILD_PRESET: ios_minimal_compiler_embedded
+      BUILD_SUBDIR: ios_minimal_compiler
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Select Xcode 26.1.1
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: ${{ env.XCODE_VERSION }}
+
+      - name: Download prereq build state
+        uses: actions/download-artifact@v4
+        with:
+          name: swift-ios-minimal-toolchain-prereqs
+          path: .
+
+      - name: Ensure swift/utils scripts are executable
+        run: python3 ./scripts/ensure_exec_bits.py --root ./swift/utils
+
+      - name: Build Swift toolchain stage
+        run: |
+          python3 ./swift/utils/build-script \
+            --preset="${BUILD_PRESET}" \
+            --only-execute=macosx-arm64-swift-build
+
+      - name: Install Swift toolchain stage
+        run: |
+          python3 ./swift/utils/build-script \
+            --preset="${BUILD_PRESET}" \
+            --only-execute=macosx-arm64-swift-install
+
+      - name: Mark toolchain as installed for packaging targets
+        run: |
+          mkdir -p artifacts
+          touch "artifacts/.${BUILD_SUBDIR}-installed"
 
       - name: Upload installed toolchain
         if: success()
@@ -112,11 +188,12 @@ jobs:
           path: |
             artifacts/install/Library/Developer/Toolchains/SwiftMinimalIOS.xctoolchain
             artifacts/.${{ env.BUILD_SUBDIR }}-installed
+            build
           if-no-files-found: error
 
   package-llvm:
     runs-on: macos-latest
-    needs: build-toolchain
+    needs: build-toolchain-swift
     env:
       XCODE_VERSION: 26.1.1
       BUILD_SUBDIR: ios_minimal_compiler
@@ -152,7 +229,7 @@ jobs:
 
   package-clang:
     runs-on: macos-latest
-    needs: build-toolchain
+    needs: build-toolchain-swift
     env:
       XCODE_VERSION: 26.1.1
       BUILD_SUBDIR: ios_minimal_compiler
@@ -189,7 +266,7 @@ jobs:
 
   package-swift:
     runs-on: macos-latest
-    needs: build-toolchain
+    needs: build-toolchain-swift
     env:
       XCODE_VERSION: 26.1.1
       BUILD_SUBDIR: ios_minimal_compiler
