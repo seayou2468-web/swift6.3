@@ -906,6 +906,7 @@ class BuildScriptInvocation(object):
             toolchain=self.toolchain,
             source_dir=self.workspace.source_dir(product_source),
             build_dir=build_dir)
+        product._host_target_for_build = host_target
         if product.should_clean(host_target):
             log_message = "Cleaning %s" % product_name
             print("--- {} ---".format(log_message), flush=True)

@@ -23,6 +23,34 @@ class CMakeProduct(product.Product):
     def is_verbose(self):
         return self.args.verbose_build
 
+    def _cmake_option_is_already_set(self, option_name):
+        prefixes = (
+            f'-D{option_name}=',
+            f'-D{option_name}:BOOL=',
+            f'-D{option_name}:STRING=',
+            f'-D{option_name}:PATH=',
+            f'-D{option_name}:FILEPATH=',
+        )
+        option_sources = [list(self.cmake_options)]
+        if hasattr(self.args, 'extra_cmake_options') and self.args.extra_cmake_options:
+            option_sources.append(list(self.args.extra_cmake_options))
+
+        return any(
+            option.startswith(prefix)
+            for options in option_sources
+            for option in options
+            for prefix in prefixes
+        )
+
+    def _apply_default_build_testing_option(self):
+        host_target = getattr(self, '_host_target_for_build', None)
+        if host_target is None:
+            return
+        if self._cmake_option_is_already_set('BUILD_TESTING'):
+            return
+        if not self.should_test(host_target):
+            self.cmake_options.define('BUILD_TESTING:BOOL', 'FALSE')
+
     def build_with_cmake(self, build_targets, build_type, build_args,
                          prefer_native_toolchain=False, 
                          ignore_extra_cmake_options=False, build_llvm=True):
@@ -50,6 +78,8 @@ class CMakeProduct(product.Product):
                 (generator_output_path and not os.path.isfile(generator_output_path)):
             if not os.path.exists(self.build_dir):
                 os.makedirs(self.build_dir)
+
+            self._apply_default_build_testing_option()
 
             # Use `cmake-file-api` in case it is available.
             query_dir = os.path.join(self.build_dir, ".cmake", "api", "v1", "query")
