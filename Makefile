@@ -74,7 +74,6 @@ $(TOOLCHAIN_STAMP): shallowen-checkouts
 	cd "$(SWIFT_DIR)" && CMAKE_BUILD_PARALLEL_LEVEL="$(BUILD_JOBS)" python3 ./utils/build-script \
 		-j "$(BUILD_JOBS)" \
 		--lit-jobs "$(LIT_JOBS)" \
-		--skip-build-compiler-rt \
 		--preset=$(BUILD_PRESET) \
 		install_destdir="$(INSTALL_DESTDIR)" \
 		install_toolchain_dir="$(INSTALL_TOOLCHAIN_DIR)"
