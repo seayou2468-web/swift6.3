@@ -1335,6 +1335,7 @@ def create_argument_parser():
                 'tests do not need to run')
 
     option('--build-toolchain-only', toggle_true,
+           default=True,
            help='only build the necessary tools to build an external toolchain')
 
     # -------------------------------------------------------------------------

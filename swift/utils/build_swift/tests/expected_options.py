@@ -128,7 +128,7 @@ EXPECTED_DEFAULTS = {
     'install_swiftformat': False,
     'install_skstresstester': False,
     'build_toolchainbenchmarks': False,
-    'build_toolchain_only': False,
+    'build_toolchain_only': True,
     'build_tvos': True,
     'build_tvos_device': False,
     'build_tvos_simulator': False,
