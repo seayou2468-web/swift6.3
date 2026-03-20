@@ -9,8 +9,7 @@ SHALLOW_SUBMODULE_JOBS ?= 16
 
 BUILD_PRESET ?= ios_minimal_compiler_embedded
 BUILD_SUBDIR ?= ios_minimal_compiler
-DEFAULT_BUILD_JOBS ?= $(shell python3 -c 'import os; print(max(8, (os.cpu_count() or 8) * 2))')
-BUILD_JOBS ?= $(DEFAULT_BUILD_JOBS)
+BUILD_JOBS ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 8)
 LIT_JOBS ?= $(BUILD_JOBS)
 ARTIFACTS_DIR ?= $(ROOT)/artifacts
 INSTALL_DESTDIR ?= $(ARTIFACTS_DIR)/install
