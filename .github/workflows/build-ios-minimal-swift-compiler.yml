@@ -18,6 +18,7 @@ jobs:
     env:
       XCODE_VERSION: 26.1.1
       UPDATE_CHECKOUT_SCHEME: release/6.3
+      SCCACHE_DIR: ${{ github.workspace }}/.sccache
 
     steps:
       - name: Check out repository
@@ -29,7 +30,8 @@ jobs:
           xcode-version: ${{ env.XCODE_VERSION }}
 
       - name: Restore update-checkout source cache
-        uses: actions/cache@v4
+        id: restore-update-checkout-cache
+        uses: actions/cache/restore@v4
         with:
           path: |
             cmark
@@ -51,15 +53,23 @@ jobs:
           restore-keys: |
             update-checkout-${{ runner.os }}-xcode-${{ env.XCODE_VERSION }}-${{ env.UPDATE_CHECKOUT_SCHEME }}-
 
-      - name: Restore build cache
-        uses: actions/cache@v4
+      - name: Restore workflow state cache
+        id: restore-workflow-state-cache
+        uses: actions/cache/restore@v4
         with:
           path: |
             build
-            artifacts/install
-          key: build-${{ runner.os }}-xcode-${{ env.XCODE_VERSION }}-${{ hashFiles('Makefile', 'swift/utils/build-presets.ini', '.github/workflows/build-ios-minimal-swift-compiler.yml', 'swift/utils/update_checkout/update_checkout/update_checkout.py', 'swift/utils/update_checkout/update_checkout/cli_arguments.py') }}
+            artifacts
+            .sccache
+          key: workflow-state-${{ runner.os }}-xcode-${{ env.XCODE_VERSION }}-${{ hashFiles('Makefile', 'swift/utils/build-presets.ini', '.github/workflows/build-ios-minimal-swift-compiler.yml', 'swift/utils/update_checkout/update_checkout/update_checkout.py', 'swift/utils/update_checkout/update_checkout/cli_arguments.py') }}
           restore-keys: |
-            build-${{ runner.os }}-xcode-${{ env.XCODE_VERSION }}-
+            workflow-state-${{ runner.os }}-xcode-${{ env.XCODE_VERSION }}-
+
+      - name: Install sccache
+        run: |
+          brew list sccache >/dev/null 2>&1 || brew install sccache
+          sccache --start-server || true
+          sccache --zero-stats || true
 
       - name: Ensure swift/utils scripts are executable
         run: python3 ./scripts/ensure_exec_bits.py --root ./swift/utils
@@ -68,7 +78,43 @@ jobs:
         run: python3 ./swift/utils/update-checkout --scheme "${UPDATE_CHECKOUT_SCHEME}" --clone --skip-history --skip-tags --reset-to-remote --skip-repository swift
 
       - name: Build the minimal iOS Swift compiler configuration
-        run: "make swift-ios-minimal UPDATE_CHECKOUT=: BUILD_JOBS=$(sysctl -n hw.logicalcpu)"
+        run: "make swift-ios-minimal UPDATE_CHECKOUT=: BUILD_JOBS=$(sysctl -n hw.logicalcpu) USE_SCCACHE=1"
+
+      - name: Show sccache statistics
+        if: always()
+        run: sccache --show-stats || true
+
+      - name: Save update-checkout source cache
+        if: always() && steps.restore-update-checkout-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            cmark
+            llbuild
+            llvm-project
+            swift-*
+            sourcekit-lsp
+            indexstore-db
+            cmake
+            ninja
+            yams
+            curl
+            libxml2
+            zlib
+            brotli
+            wasi-libc
+            wasmkit
+          key: ${{ steps.restore-update-checkout-cache.outputs.cache-primary-key }}
+
+      - name: Save workflow state cache
+        if: always() && steps.restore-workflow-state-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            build
+            artifacts
+            .sccache
+          key: ${{ steps.restore-workflow-state-cache.outputs.cache-primary-key }}
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
