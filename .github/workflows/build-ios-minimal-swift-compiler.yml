@@ -68,7 +68,7 @@ jobs:
         run: python3 ./swift/utils/update-checkout --scheme "${UPDATE_CHECKOUT_SCHEME}" --clone --skip-history --skip-tags --reset-to-remote --skip-repository swift
 
       - name: Build the minimal iOS Swift compiler configuration
-        run: "make swift-ios-minimal UPDATE_CHECKOUT=: BUILD_JOBS=$(( $(sysctl -n hw.logicalcpu) * 2 ))"
+        run: "make swift-ios-minimal UPDATE_CHECKOUT=: BUILD_JOBS=$(sysctl -n hw.logicalcpu)"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
