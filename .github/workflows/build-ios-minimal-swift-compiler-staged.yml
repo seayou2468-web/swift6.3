@@ -1,0 +1,248 @@
+name: build-ios-minimal-swift-compiler-staged
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/build-ios-minimal-swift-compiler-staged.yml
+      - Makefile
+      - swift/utils/build-presets.ini
+      - swift/utils/update_checkout/update_checkout/update_checkout.py
+      - swift/utils/update_checkout/update_checkout/cli_arguments.py
+
+jobs:
+  build-toolchain:
+    runs-on: macos-latest
+    env:
+      XCODE_VERSION: 26.1.1
+      UPDATE_CHECKOUT_SCHEME: release/6.3
+      BUILD_SUBDIR: ios_minimal_compiler
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Select Xcode 26.1.1
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: ${{ env.XCODE_VERSION }}
+
+      - name: Restore update-checkout source cache
+        id: restore-update-checkout-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            cmark
+            llbuild
+            llvm-project
+            swift-*
+            sourcekit-lsp
+            indexstore-db
+            cmake
+            ninja
+            yams
+            curl
+            libxml2
+            zlib
+            brotli
+            wasi-libc
+            wasmkit
+          key: update-checkout-${{ runner.os }}-xcode-${{ env.XCODE_VERSION }}-${{ env.UPDATE_CHECKOUT_SCHEME }}-${{ hashFiles('swift/utils/update_checkout/update-checkout-config.json', 'swift/utils/update_checkout/update_checkout/update_checkout.py', 'swift/utils/update_checkout/update_checkout/cli_arguments.py') }}
+          restore-keys: |
+            update-checkout-${{ runner.os }}-xcode-${{ env.XCODE_VERSION }}-${{ env.UPDATE_CHECKOUT_SCHEME }}-
+
+      - name: Restore toolchain build cache
+        id: restore-toolchain-build-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            build
+            artifacts/install
+          key: toolchain-build-${{ runner.os }}-xcode-${{ env.XCODE_VERSION }}-${{ hashFiles('Makefile', 'swift/utils/build-presets.ini', '.github/workflows/build-ios-minimal-swift-compiler-staged.yml', 'swift/utils/update_checkout/update_checkout/update_checkout.py', 'swift/utils/update_checkout/update_checkout/cli_arguments.py') }}
+          restore-keys: |
+            toolchain-build-${{ runner.os }}-xcode-${{ env.XCODE_VERSION }}-
+
+      - name: Ensure swift/utils scripts are executable
+        run: python3 ./scripts/ensure_exec_bits.py --root ./swift/utils
+
+      - name: Update checkout to Swift 6.3-compatible revisions
+        run: python3 ./swift/utils/update-checkout --scheme "${UPDATE_CHECKOUT_SCHEME}" --clone --skip-history --skip-tags --reset-to-remote --skip-repository swift
+
+      - name: Build the minimal iOS Swift compiler toolchain
+        run: "make swift-toolchain UPDATE_CHECKOUT=: BUILD_JOBS=$(sysctl -n hw.logicalcpu) BUILD_SUBDIR=${BUILD_SUBDIR}"
+
+      - name: Save update-checkout source cache
+        if: success() && steps.restore-update-checkout-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            cmark
+            llbuild
+            llvm-project
+            swift-*
+            sourcekit-lsp
+            indexstore-db
+            cmake
+            ninja
+            yams
+            curl
+            libxml2
+            zlib
+            brotli
+            wasi-libc
+            wasmkit
+          key: update-checkout-${{ runner.os }}-xcode-${{ env.XCODE_VERSION }}-${{ env.UPDATE_CHECKOUT_SCHEME }}-${{ hashFiles('swift/utils/update_checkout/update-checkout-config.json', 'swift/utils/update_checkout/update_checkout/update_checkout.py', 'swift/utils/update_checkout/update_checkout/cli_arguments.py') }}
+
+      - name: Save toolchain build cache
+        if: success() && steps.restore-toolchain-build-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            build
+            artifacts/install
+          key: toolchain-build-${{ runner.os }}-xcode-${{ env.XCODE_VERSION }}-${{ hashFiles('Makefile', 'swift/utils/build-presets.ini', '.github/workflows/build-ios-minimal-swift-compiler-staged.yml', 'swift/utils/update_checkout/update_checkout/update_checkout.py', 'swift/utils/update_checkout/update_checkout/cli_arguments.py') }}
+
+      - name: Upload installed toolchain
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: swift-ios-minimal-toolchain
+          path: |
+            artifacts/install/Library/Developer/Toolchains/SwiftMinimalIOS.xctoolchain
+            artifacts/.${{ env.BUILD_SUBDIR }}-installed
+          if-no-files-found: error
+
+  package-llvm:
+    runs-on: macos-latest
+    needs: build-toolchain
+    env:
+      XCODE_VERSION: 26.1.1
+      BUILD_SUBDIR: ios_minimal_compiler
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Select Xcode 26.1.1
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: ${{ env.XCODE_VERSION }}
+
+      - name: Download installed toolchain
+        uses: actions/download-artifact@v4
+        with:
+          name: swift-ios-minimal-toolchain
+          path: .
+
+      - name: Package LLVM xcframework
+        run: "make package-llvm-xcframework UPDATE_CHECKOUT=: BUILD_SUBDIR=${BUILD_SUBDIR}"
+
+      - name: Upload LLVM xcframework
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: swift-ios-minimal-llvm-xcframework
+          path: |
+            artifacts/LLVM.xcframework
+            artifacts/libLLVM.a
+            artifacts/llvm-headers
+          if-no-files-found: error
+
+  package-clang:
+    runs-on: macos-latest
+    needs: build-toolchain
+    env:
+      XCODE_VERSION: 26.1.1
+      BUILD_SUBDIR: ios_minimal_compiler
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Select Xcode 26.1.1
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: ${{ env.XCODE_VERSION }}
+
+      - name: Download installed toolchain
+        uses: actions/download-artifact@v4
+        with:
+          name: swift-ios-minimal-toolchain
+          path: .
+
+      - name: Package Clang xcframework
+        run: "make package-clang-xcframework UPDATE_CHECKOUT=: BUILD_SUBDIR=${BUILD_SUBDIR}"
+
+      - name: Upload Clang xcframework
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: swift-ios-minimal-clang-xcframework
+          path: |
+            artifacts/Clang.xcframework
+            artifacts/libClang.a
+            artifacts/clang-headers
+            artifacts/clang-ios-minimal
+          if-no-files-found: error
+
+  package-swift:
+    runs-on: macos-latest
+    needs: build-toolchain
+    env:
+      XCODE_VERSION: 26.1.1
+      BUILD_SUBDIR: ios_minimal_compiler
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Select Xcode 26.1.1
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: ${{ env.XCODE_VERSION }}
+
+      - name: Download installed toolchain
+        uses: actions/download-artifact@v4
+        with:
+          name: swift-ios-minimal-toolchain
+          path: .
+
+      - name: Package Swift xcframework
+        run: "make package-swift-xcframework UPDATE_CHECKOUT=: BUILD_SUBDIR=${BUILD_SUBDIR}"
+
+      - name: Upload Swift xcframework
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: swift-ios-minimal-swift-xcframework
+          path: |
+            artifacts/Swift.xcframework
+            artifacts/libSwift.a
+            artifacts/swift-headers
+          if-no-files-found: error
+
+  collect-deliverables:
+    runs-on: macos-latest
+    if: always()
+    needs:
+      - package-llvm
+      - package-clang
+      - package-swift
+
+    steps:
+      - name: Download packaged artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: swift-ios-minimal-*-xcframework
+          path: deliverables
+          merge-multiple: true
+
+      - name: Upload combined deliverables bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: swift-ios-minimal-staged-deliverables
+          path: deliverables
+          if-no-files-found: warn
