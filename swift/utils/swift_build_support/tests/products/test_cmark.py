@@ -16,6 +16,7 @@ import sys
 import tempfile
 import unittest
 from io import StringIO
+from unittest import mock
 
 # from swift_build_support import cmake
 from swift_build_support import shell
@@ -46,8 +47,11 @@ class CMarkTestCase(unittest.TestCase):
         # Setup args
         self.args = argparse.Namespace(
             build_cmark=True,
+            build_variant="Debug",
             cmake_generator="Ninja",
             cmark_build_type="Release",
+            test_cmark=True,
+            cross_compile_hosts=[],
             rebuild=False,
             extra_cmake_options=[],
             skip_build=False,
@@ -136,3 +140,23 @@ class CMarkTestCase(unittest.TestCase):
             build_dir=self.workspace.build_root)
 
         self.assertFalse(cmark.should_test(self.host.name))
+
+    def test_build_disables_cmark_tests_when_skipped(self):
+        self.args.test_cmark = False
+
+        cmark = CMark(
+            args=self.args,
+            toolchain=self.toolchain,
+            source_dir=self.workspace.source_root,
+            build_dir=self.workspace.build_root)
+
+        with mock.patch.object(
+                cmark,
+                'generate_toolchain_file_for_darwin_or_linux',
+                return_value=None), mock.patch.object(
+                cmark,
+                'build_with_cmake',
+                return_value=None):
+            cmark.build(host_target=self.host.name)
+
+        self.assertIn("-DCMARK_TESTS=OFF", list(cmark.cmake_options))

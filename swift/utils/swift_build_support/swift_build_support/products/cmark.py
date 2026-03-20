@@ -53,6 +53,9 @@ class CMark(cmake_product.CMakeProduct):
                                   self.args.cmark_build_variant)
 
         self.cmake_options.define('CMARK_THREADING', 'ON')
+        self.cmake_options.define(
+            'CMARK_TESTS',
+            'ON' if getattr(self.args, 'test_cmark', True) else 'OFF')
 
         host_toolchain = self.generate_toolchain_file_for_darwin_or_linux(host_target)
 
