@@ -1803,6 +1803,10 @@ for host in "${ALL_HOSTS[@]}"; do
                     "${swift_cmake_options[@]}"
                 )
 
+                if [[ $(is_cross_tools_host ${host}) ]] ; then
+                    cmake_options+=("${SWIFT_TARGET_CMAKE_OPTIONS[@]}")
+                fi
+
                 # NOTE: This is not a dead option! It is relied upon for certain
                 # bots/build-configs!
                 #

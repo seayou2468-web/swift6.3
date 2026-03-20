@@ -1,0 +1,10 @@
+# REQUIRES: standalone_build
+# REQUIRES: OS=macosx
+
+# RUN: %empty-directory(%t)
+# RUN: mkdir -p %t
+# RUN: SKIP_XCODE_VERSION_CHECK=1 SWIFT_BUILD_ROOT=%t %swift_src_root/utils/build-script --dry-run --cross-compile-hosts=iphoneos-arm64 --swift-primary-variant-sdk=IOS --swift-primary-variant-arch=arm64 --stdlib-deployment-targets=iphoneos-arm64 --build-stdlib-deployment-targets=iphoneos-arm64 --build-toolchain-only=1 --skip-build-llvm --skip-build-cmark --skip-build-lldb --skip-build-llbuild --skip-build-libdispatch --skip-build-foundation --skip-build-xctest --cmake %cmake 2>&1 | %FileCheck %s
+
+# CHECK: cmake {{.*}}/swift
+# CHECK-SAME: -DSWIFT_HOST_TRIPLE:STRING=arm64-apple-ios
+# CHECK-SAME: -DCMAKE_Swift_COMPILER_TARGET:STRING=arm64-apple-ios
