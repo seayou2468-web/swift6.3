@@ -31,10 +31,12 @@ jobs:
 
       - name: Install pinned CMake version for Swift 6.3
         run: |
-          python3 -m pip install --user "cmake==${CMAKE_VERSION}"
-          PYTHON_USER_BIN="$(python3 -m site --user-base)/bin"
-          echo "$PYTHON_USER_BIN" >> "$GITHUB_PATH"
-          export PATH="$PYTHON_USER_BIN:$PATH"
+          python3 -m venv .cmake-venv
+          . .cmake-venv/bin/activate
+          python3 -m pip install --upgrade pip
+          python3 -m pip install "cmake==${CMAKE_VERSION}"
+          echo "$PWD/.cmake-venv/bin" >> "$GITHUB_PATH"
+          export PATH="$PWD/.cmake-venv/bin:$PATH"
           python3 - <<'PY'
           import json
           import os
