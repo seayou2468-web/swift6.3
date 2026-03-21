@@ -18,6 +18,7 @@ jobs:
     env:
       XCODE_VERSION: 26.1.1
       UPDATE_CHECKOUT_SCHEME: release/6.3
+      CMAKE_VERSION: 3.30.2
 
     steps:
       - name: Check out repository
@@ -28,31 +29,36 @@ jobs:
         with:
           xcode-version: ${{ env.XCODE_VERSION }}
 
-      - name: Install Homebrew CMake expected by Swift 6.3
+      - name: Install pinned CMake version for Swift 6.3
         run: |
-          brew install cmake
+          python3 -m pip install --user "cmake==${CMAKE_VERSION}"
+          PYTHON_USER_BIN="$(python3 -m site --user-base)/bin"
+          echo "$PYTHON_USER_BIN" >> "$GITHUB_PATH"
+          export PATH="$PYTHON_USER_BIN:$PATH"
           python3 - <<'PY'
           import json
+          import os
           import pathlib
           import re
           import subprocess
 
           config = json.loads(pathlib.Path('swift/utils/update_checkout/update-checkout-config.json').read_text())
           expected = config['branch-schemes']['release/6.3']['repos']['cmake'].removeprefix('v')
+          pinned = os.environ['CMAKE_VERSION']
           actual_output = subprocess.check_output(['cmake', '--version'], text=True)
           match = re.search(r'cmake version (\d+\.\d+\.\d+)', actual_output)
           if match is None:
               raise SystemExit(f'Unable to parse cmake version from: {actual_output}')
           actual = match.group(1)
 
-          def parse(version: str) -> tuple[int, int, int]:
-              return tuple(int(part) for part in version.split('.'))
-
-          if parse(actual) < parse(expected):
+          if pinned != expected:
               raise SystemExit(
-                  f'Installed Homebrew CMake {actual} is older than Swift 6.3 expects ({expected}).')
+                  f'Pinned CMake {pinned} does not match Swift 6.3 expected version ({expected}).')
+          if actual != pinned:
+              raise SystemExit(
+                  f'Installed CMake {actual} does not match pinned version ({pinned}).')
 
-          print(f'Swift 6.3 expects CMake {expected}; using Homebrew CMake {actual}.')
+          print(f'Swift 6.3 expects CMake {expected}; pinned and installed version is {actual}.')
           PY
 
       - name: Restore update-checkout source cache
