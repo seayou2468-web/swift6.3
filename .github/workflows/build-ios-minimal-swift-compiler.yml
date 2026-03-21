@@ -103,9 +103,21 @@ jobs:
         run: python3 ./swift/utils/update-checkout --scheme "${UPDATE_CHECKOUT_SCHEME}" --clone --skip-history --skip-tags --reset-to-remote --skip-repository swift
 
       - name: Build the minimal iOS Swift compiler configuration
-        run: "make swift-ios-minimal UPDATE_CHECKOUT=: BUILD_JOBS=$(sysctl -n hw.logicalcpu)"
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p artifacts/logs
+          make swift-ios-minimal UPDATE_CHECKOUT=: BUILD_JOBS=$(sysctl -n hw.logicalcpu) 2>&1 | tee artifacts/logs/build-ios-minimal.log
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: swift-ios-minimal-build-log
+          path: artifacts/logs/build-ios-minimal.log
 
       - name: Upload build artifacts
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: swift-ios-minimal-deliverables
