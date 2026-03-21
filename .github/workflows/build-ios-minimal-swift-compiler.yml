@@ -28,12 +28,32 @@ jobs:
         with:
           xcode-version: ${{ env.XCODE_VERSION }}
 
-      - name: Install Homebrew CMake 3.27
+      - name: Install Homebrew CMake expected by Swift 6.3
         run: |
-          brew install cmake@3.27
-          brew unlink cmake
-          brew link cmake@3.27 --force
-          cmake --version
+          brew install cmake
+          python3 - <<'PY'
+          import json
+          import pathlib
+          import re
+          import subprocess
+
+          config = json.loads(pathlib.Path('swift/utils/update_checkout/update-checkout-config.json').read_text())
+          expected = config['branch-schemes']['release/6.3']['repos']['cmake'].removeprefix('v')
+          actual_output = subprocess.check_output(['cmake', '--version'], text=True)
+          match = re.search(r'cmake version (\d+\.\d+\.\d+)', actual_output)
+          if match is None:
+              raise SystemExit(f'Unable to parse cmake version from: {actual_output}')
+          actual = match.group(1)
+
+          def parse(version: str) -> tuple[int, int, int]:
+              return tuple(int(part) for part in version.split('.'))
+
+          if parse(actual) < parse(expected):
+              raise SystemExit(
+                  f'Installed Homebrew CMake {actual} is older than Swift 6.3 expects ({expected}).')
+
+          print(f'Swift 6.3 expects CMake {expected}; using Homebrew CMake {actual}.')
+          PY
 
       - name: Restore update-checkout source cache
         uses: actions/cache@v4
