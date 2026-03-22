@@ -91,7 +91,7 @@ jobs:
         with:
           path: |
             build
-            artifacts/install
+            artifacts/toolchain-install-root
           key: build-${{ runner.os }}-xcode-${{ env.XCODE_VERSION }}-${{ hashFiles('Makefile', 'swift/utils/build-presets.ini', '.github/workflows/build-ios-minimal-swift-compiler.yml', 'swift/utils/update_checkout/update_checkout/update_checkout.py', 'swift/utils/update_checkout/update_checkout/cli_arguments.py') }}
           restore-keys: |
             build-${{ runner.os }}-xcode-${{ env.XCODE_VERSION }}-
@@ -113,4 +113,4 @@ jobs:
             artifacts/LLVM.xcframework
             artifacts/Clang.xcframework
             artifacts/Swift.xcframework
-            artifacts/install/Library/Developer/Toolchains/SwiftMinimalIOS.xctoolchain
+            artifacts/toolchain-install-root/SwiftMinimalIOS.xctoolchain
